@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T00:20:18"
+updated: "2026-10-20T07:34:44"
 ---
 
 <!-- compiled_truth -->
@@ -123,4 +123,34 @@ updated: "2026-10-20T00:20:18"
   kind: evidence
   summary: "实测打通主机→屏幕内容通路: feature9 记录 cmd 0x04 可注入 ODM 包(时间包触发屏幕时钟重置为正确现实时间), cmd 0x0D/0x0C(灯效模式2)实测切换了屏幕背景(显示人物图). 下一步: ODM SET_TFT_BUILT_IN_INDEX(81)/SET_TFT_USER_ANIMATION(80)"
   source: "build/probe/payload_rec04_time.bin, payload_rec04_t2/t3.bin, payload_cmd0d/0c.bin; fw_full.lst 0x6346-0x6495"
+  affects: [screen-customization]
+
+- time: 2026-10-20T00:57:45
+  kind: decision
+  summary: "决定: 官方厂商工具不可用(网页版走 output report,本键盘无 output report; Windows 驱动无法获取),改用自研 GUI 工具 tools/y65s_tool.py 作为厂商工具替代品"
+  source: "build/odm/layout-classic-Bylu1MNp.js mt()/sendReport; tools/vendorhid.py"
+  affects: [screen-customization]
+
+- time: 2026-10-20T01:35:10
+  kind: evidence
+  summary: "内容窗口帧格式实测确认(默认窗口转发→屏幕+RGB均有反应). 解码出固件内置默认内容表(@0x9983 128B: 开头 00 03 03 00 00 00 13 04 0b 00 0b 20 01, 从0x999B起有一段重复的 14 17 字节串=疑似颜色/图案数据, 位尾 5a a5). 下一步: 修改表内容做自定义呈现"
+  source: "firmware/backups/YD-Y65S_full_20261019.bin 0x9983; payload_rec04_replay_w1.bin 实测"
+  affects: [screen-customization]
+
+- time: 2026-10-20T01:52:19
+  kind: decision
+  summary: "用户明确授权(2026-10-20)向模块用户动画区(模块flash 0x650000, 非主固件)写入测试图, 分辨率按屏幕长宽比 9:16 取 135x240. 内置图仍可通过 记录0x05 payload[4]=1 payload[7]=0 切回. 上传脚本 build/tft_upload.py"
+  source: "用户问答: 授权先传测试图 / 约9:16 -> 135x240"
+  affects: [screen-customization]
+
+- time: 2026-10-20T07:10:15
+  kind: note
+  summary: "用户裁决(2026-10-20): 测试图没写进去, 本轮上传方向按失败记录, 先归档尝试链路再继续. 已知唯一对屏幕有可见效果的主机命令仍是 记录0x04 (0x52 通道, 会让模块切页/重绘), 记录0x05 的 0x6E 上传通道无视觉反馈."
+  source: "用户: 没有写进去, 记录尝试提交推送"
+  affects: [screen-customization]
+
+- time: 2026-10-20T07:34:44
+  kind: evidence
+  summary: "用户补充观察(2026-10-20): 屏幕上的时间从来没准过, 大约比真实时间早/晚 6 分钟左右 —— 说明屏幕时钟是模块自己自由走时的, 我们发送的 Hu 时间包(记录0x04 + 5A 01 5A yy mm dd hh mi ss wd) 从未真正落地. 结合上传测试同样无效, 结论: 记录0x04 能让模块切页/重绘, 但载荷语义尚未被模块采用; 校时与自定义图两条路都还差最后一层(很可能是 ODM 包头的 size/addr 字段或每包会话前提)."
+  source: "用户口述: 时间从未正确, 大约比显示早6分钟"
   affects: [screen-customization]

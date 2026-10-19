@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T00:20:01"
+updated: "2026-10-20T07:10:15"
 ---
 
 <!-- compiled_truth -->
@@ -149,4 +149,70 @@ HID 报告等）驱动 ⇒ **主控对模块说的是"状态"，不是"内容"**
   kind: decision
   summary: "主机记录协议(feature 9)已实测打通: cmd 0x04 转发128B到模块, cmd 0x0D/0x0C 切换屏幕背景图"
   source: "build/fw_full.lst 0x6346-0x6495; build/probe/ 实测"
+  affects: [module-link]
+
+- time: 2026-10-20T01:13:50
+  kind: evidence
+  summary: "复现规律确认: 任何记录0x04(模块cmd 0x52字节流)包都会关闭键盘RGB(校时/切内置图/会话包均如此); ODM 0x34 时间结构值不生效(2027-03-08/2099-06-15/真实时间三种值屏幕均无变化),首次的时钟重置是模块进入屏幕会话状态的副作用; 记录0x0D(灯效模式2)/0x0C多数时候能恢复,但会话态深了之后救不回,需要断电重启复位"
+  source: "实测 2026-10-20, tools/y65s_tool.py 校时/救援按钮观察"
+  affects: [module-link]
+
+- time: 2026-10-20T01:35:10
+  kind: evidence
+  summary: "重大: 固件内置完整模块会话回放器(0x0D11..): 主循环0x85AC在[0x0F17].0置位时执行,将384B内置表(代码0x9983)装入xdata 0x08F5,然后发全序: 0x52内容窗口(128B)+0x5E/0x5F/0x62/0x63(各2x1B从代码表0x0C00/0xC20/0xC80/0xCA0)+0x66/0x67(空)+0x6A/0x6B+0x6E..0x75(8x1B)+0x54+0x56(代码表0xAD7A 126B); [0x0F8A]=5/[0x0F8B]=0x0A是发送器配置常量非握手. 实测: 把默认内容窗口第1个128B经记录0x04原样发出,屏幕有反应(RGB灭+屏幕切页)=传输帧格式确认正确"
+  source: "fw_full.lst 0x0D11-0x10B1, 0x85AC, 0x87DE(0x0F17|=1), fw 0x9983; probe payload_rec04_replay_w1.bin"
+  affects: [module-link]
+
+- time: 2026-10-20T01:40:47
+  kind: reversal
+  summary: "修正: 内置内容表复制长度是128字节(终止条件 counter lo==0 且 hi==0x80 => 0x0080), 源码 0x9983..0x9A02 -> xdata 0x08F5..0x0974. 之前说的384字节是误读(把 hi==0x80 当成0x180). 该128字节正是记录0x04的内容窗口"
+  source: "fw_full.lst 0x0D12-0x0D50 逐条复核"
+  affects: [module-link]
+
+- time: 2026-10-20T01:52:19
+  kind: evidence
+  summary: "ODM 协议静态完全解出: 包构建器 xn = 8字节头 AA <cmd> <len_lo> <len_hi> <addr_lo> <addr_hi> <h5> <h6>, 数据从 offset 8 开始; 发送器 mt 用 output report 0 (reportCount 默认32) 按 reportCount-8 分块; 应答解析 nu 要求首字节0x55, 头同为8字节(55 <cmd> <len> <addr ...>). 关键映射: 模块帧命令字节 = ODM 命令 + 0x1E (52->0x52, 64->0x5E, 65->0x5F, 80->0x6E, 81->0x6F ...)"
+  source: "build/odm/layout-classic-Bylu1MNp.js: xn/mt/nu/Je"
+  affects: [module-link]
+
+- time: 2026-10-20T01:52:19
+  kind: evidence
+  summary: "SET_TEMPORARY_COMMAND_DATA(=ODM 52=模块0x52=记录0x04) 是屏幕数据通道, JS 里有三种载荷: 屏幕时间 Hu=[5A 01 5A yy mm dd hh mi ss wd]; 系统信息 Wu=24B(y[6]=5A, y[12..20]=CPU占用/CPU温度/GPU占用/GPU温度/当前温度/最高/最低/天气码/湿度); PC时间 ju=[3A 01 5A ...]. 厂商工具在设备连接时自动发 setTftDateTime(=Hu), tftDirection==255 时跳过 => 255 表示无屏. 设备信息字段位置: batteryLevel l[17], tftMaxFrames l[22..23], tftDirection l[28], frameVersion l[30]"
+  source: "layout-classic JS: Hu/Wu/ju, 设备信息解析器"
+  affects: [module-link]
+
+- time: 2026-10-20T01:52:19
+  kind: evidence
+  summary: "记录通道精确语义修正: 记录0x04 数据窗口 = payload[7..134] 128字节(发送地址=0x08F5+8, 已实测确认), 且入口若 [0x0F2F]==0x5A(TFT忙) 直接丢弃整条记录; 记录0x05 的 payload[4] 选模块命令 (cmd=payload[4]+0x6E, 有效0x00..0x07), 实际发送循环上界 0x0200 => 每次发 payload[7] 起的512字节"
+  source: "fw_full.lst 0x7E5C-0x7F39, 0x87A0-0x87C8"
+  affects: [module-link]
+
+- time: 2026-10-20T01:52:19
+  kind: evidence
+  summary: "TFT 用户动画上传格式(厂商 zu): 载荷 = 256字节帧头([0]=帧数, [1..n-1]=延迟x5, [n]=0, 其余0xFF) + RGB565小端像素(r>>3<<11|g>>2<<5|b>>3); 每块数据504字节, 块头 AA 50 <idx_lo> <idx_hi> <cnt_lo> <cnt_hi> 50 06 (常数6619136/4096=1616=0x650 => 模块flash 0x650000 用户动画区); 固件侧用记录0x05 payload[4]=0 每次送512字节(块头8+504数据)"
+  source: "layout-classic JS: zu, Eo, \\; 0xB204 中 R4=2,R5=8"
+  affects: [module-link]
+
+- time: 2026-10-20T07:10:15
+  kind: evidence
+  summary: "逐字节发送链路精确语义: 0xA331 把 (R6,R7) 存到帧缓冲后, 用 R3(cmd) 查白名单 {0x52,0x5E,0x5F,0x62,0x63,0x66,0x67,0x6A,0x6B,0x54,0x56} 以及区间 0x6E..0x75, 命中则令 R7=1 (返回 1) 否则 R7=0; 0xBADB 只有在 R7==1 时才 LCALL 0xB2F3 真正发射, 否则只丢弃. 所以 记录0x04(0x52) 和 记录0x05(0x6E..0x75) 的每个字节都确实发出去了, 而其它命令号的字节会被静默丢弃. 0xB2F3 是寄存器级发送(IB_* 硬件)."
+  source: "fw_full.lst 0xA331-0xA381, 0xBADB-0xBAF5, 0xB2F3-0xB32B"
+  affects: [module-link]
+
+- time: 2026-10-20T07:10:15
+  kind: evidence
+  summary: "TFT 用户动画上传(记录0x05 payload[4]=0 -> 模块0x6E, 512B/块) 实测失败: 135x240 RGB565小端 + 256字节帧头 = 65056 B, 切成 130 块 (块头 AA 50 idx cnt 50 06 + 504 数据), 1.8s/块, 236 秒全部 ok=True 且模块对每字节都应答(否则每字节48ms超时, 130块不可能这么快). 但屏幕画面无任何变化(仍是内置人像图), 之后发 内置图索引0/1 也无变化. 结论: 模块收到并 ack 了数据, 但没有显示/没有接受该上传; 上传格式或会话前提仍不对."
+  source: "build/tft_upload.py 运行日志 build/tft_upload.log; 用户目视确认"
+  affects: [module-link]
+
+- time: 2026-10-20T07:10:15
+  kind: evidence
+  summary: "主机侧回包: 任何有效记录(0x04/0x05/0x06/0x08)都会在约0.55s后回一条 input report 09 0a 06 00 01 00 00 00; 记录0x0D 回 09 0a 06 01 00 00 00 00; 记录0x07/0x09/0x0E 这类被忽略的不回. 空闲时不回. 该回包与模块是否接受数据无关(非法包头/非法子命令的载荷完全一致), 只能当\\"
+  source: "build/probe_io.py 四组对比"
+  affects: [module-link]
+
+- time: 2026-10-20T07:10:15
+  kind: evidence
+  summary: "记录0x08 实际行为: 0x6410 -> R6R7=0x08F5(记录缓冲) R5=8 -> 0x6B57, 该函数按记录字节索引 code 表 0x0377(0x12 步长, 6 项) 并把结果写进 xdata 0x0300+ 区, 全程没有 IAP 擦写调用 => 只改 RAM 配置表, 不是 flash. 全 0 载荷会把这几个表项清零, 拔插一次键盘即从 flash 恢复."
+  source: "fw_full.lst 0x6410-0x6419, 0x6B57-0x6C30; 0x2CF0/0x2CFC 为纯 xdata 存取"
   affects: [module-link]

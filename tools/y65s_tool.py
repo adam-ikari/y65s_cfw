@@ -23,6 +23,7 @@ import pathlib
 import struct
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -33,6 +34,9 @@ import vendorhid as vh  # noqa: E402
 VID, PID, PAGE, USAGE, REPORT = 0x258A, 0x019D, 0xFF02, 0x0002, 9
 FEATURE_LEN = 520      # report 9 的 feature 长度（1 id + 519 payload）
 WINDOW = 128           # 记录 0x04 每次转发的字节数 payload[7..134]
+BLOCK = 512            # 记录 0x05 每次转发的字节数 payload[7..518]
+BLOCK_DATA = BLOCK - 8 # 块头 AA 50 idx cnt 50 06 之后的净数据
+CHUNK_DELAY = 1.8      # 记录 0x05 之间必须留够中继时间，否则固件会丢弃（TFT 忙）
 
 SIZES = {  # 模块家族已知的屏幕规格（竖向）
     "96x160": (96, 160),
@@ -160,6 +164,14 @@ class App:
         p[7:7 + len(window)] = window[:WINDOW]
         return self.send_main(bytes(p))
 
+    def rec_block(self, sub: int, block: bytes) -> bool:
+        """记录 0x05：payload[4] 选模块命令（0x6E+sub），payload[7..518] 共 512 B。"""
+        p = bytearray(519)
+        p[0] = 0x05
+        p[4] = sub & 0x07
+        p[7:7 + len(block)] = block[:BLOCK]
+        return self.send_main(bytes(p))
+
     def send_simple(self, cmd: int) -> None:
         ok = self.send_main(bytes([cmd]) + bytearray(518))
         self.log_write(f"记录 0x{cmd:02X} 发送 {'成功' if ok else '失败'}")
@@ -169,18 +181,23 @@ class App:
 
     def sync_time(self) -> None:
         now = dt.datetime.now()
-        wd = (now.weekday() + 1) % 7  # 0x6CHu 的星期参数 0-6；此前 0=周一 起点
+        wd = (now.weekday() + 1) % 7  # 厂商 Hu 的星期参数 0-6
         ts = bytes([0x5A, 0x01, 0x5A, now.year % 100, now.month, now.day,
                     now.hour, now.minute, now.second, wd])
-        window = bytes([0xAA, 0x34, 0x0A, 0x00, 0x00, 0x00, 0x01, 0x00]) + ts
+        # 厂商 contentSize=24：10 字节时间 + 14 字节 0
+        window = ts + bytes(24 - len(ts))
         ok = self.rec_with_window(window)
         self.log_write(f"校时 {now:%Y-%m-%d %H:%M:%S} wd={wd} {'成功' if ok else '失败'}"
-                       f"（固件会自动把结构第 3 字节补成 0x13）")
+                       f"（注意：屏幕只在时钟页才看得出来）")
 
     def set_builtin(self) -> None:
         idx = self.idx.get() & 0xFF
-        window = bytes([0xAA, 0x51, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, idx])
-        ok = self.rec_with_window(window)
+        # ODM 0x51 / 模块 0x6F：contentSize=1，数据首字节 = 索引
+        p = bytearray(519)
+        p[0] = 0x05
+        p[4] = 0x01
+        p[7] = idx
+        ok = self.send_main(bytes(p))
         self.log_write(f"切换内置图 #{idx} {'成功' if ok else '失败'}")
 
     # ------------------------------------------------------------------
@@ -203,37 +220,39 @@ class App:
             messagebox.showerror("转换失败", str(exc))
             return
         frames = 1
-        header = bytes([frames, 0]) + bytes([0xFF] * 254)
-        data = header + rgb565
-        chunks = []
-        total = (len(data) + 119) // 120
+        header = bytearray([0xFF] * 256)
+        header[0] = frames
+        header[frames] = 0            # 1 帧：header = 01 00 FF FF ...
+        data = bytes(header) + rgb565
+        total = (len(data) + BLOCK_DATA - 1) // BLOCK_DATA
+        blocks = []
         for b in range(total):
-            piece = data[b * 120:(b + 1) * 120]
-            piece = piece + bytes(120 - len(piece))
-            chunks.append(bytes([0xAA, 0x50, b & 0xFF, (b >> 8) & 0xFF,
+            piece = data[b * BLOCK_DATA:(b + 1) * BLOCK_DATA]
+            piece = piece + bytes(BLOCK_DATA - len(piece))
+            blocks.append(bytes([0xAA, 0x50, b & 0xFF, (b >> 8) & 0xFF,
                                  total & 0xFF, (total >> 8) & 0xFF, 0x50, 0x06]) + piece)
-        stream = b"".join(chunks)
-        wins = (len(stream) + WINDOW - 1) // WINDOW
         self.log_write(f"开始上传: {w}x{h}, RGB565 {len(rgb565)} B, "
-                       f"总流 {len(stream)} B, {wins} 个窗口")
+                       f"总流 {len(data)} B, {total} 块 x {BLOCK} B "
+                       f"(约 {total * CHUNK_DELAY / 60:.1f} 分钟)")
         self.cancel.clear()
-        threading.Thread(target=self._upload_worker, args=(stream, wins), daemon=True).start()
+        threading.Thread(target=self._upload_worker, args=(blocks,), daemon=True).start()
 
-    def _upload_worker(self, stream: bytes, wins: int) -> None:
-        dead = False
-        for j in range(wins):
+    def _upload_worker(self, blocks: list[bytes]) -> None:
+        total = len(blocks)
+        for j, block in enumerate(blocks):
             if self.cancel.is_set():
-                self.log_write(f"已停止 @ {j}/{wins}")
+                self.log_write(f"已停止 @ {j}/{total}")
                 return
-            piece = stream[j * WINDOW:(j + 1) * WINDOW]
-            piece = piece + bytes(WINDOW - len(piece))  # 尾窗对齐
-            if not self.rec_with_window(piece):
-                self.log_write(f"窗口 {j} 写入失败")
-                dead = True
-                break
-            self.root.after(0, lambda j=j, w=wins: self.prog.config(value=100 * (j + 1) / w))
+            if not self.rec_block(0x00, block):
+                self.log_write(f"块 {j} 写入失败，已中止")
+                return
+            if j % 10 == 0 or j == total - 1:
+                self.log_write(f"进度 {j + 1}/{total}")
+            self.root.after(0, lambda j=j: self.prog.config(value=100 * (j + 1) / total))
+            if j != total - 1:
+                time.sleep(CHUNK_DELAY)
         self.root.after(0, lambda: self.log_write(
-            "上传结束。" + ("有写入失败！" if dead else "观察屏幕绘制效果（可能未生效，协议未确认）")))
+            "上传结束，看屏幕是否出现测试图案（四色 + 十字线）。"))
 
     # ------------------------------------------------------------------
     def watch5(self) -> None:
