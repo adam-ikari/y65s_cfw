@@ -109,11 +109,30 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 
   记录格式 `[class, mod, hi, usage]`：`0x00` 键盘（HID usage 在 `usage`，修饰位掩码在 `mod`，
   也用于 `00 10 00 52`=RCtrl+Up 这类组合键）；`0x02` consumer（16 位 usage `hi:usage`，
-  如 `0x00EA`=音量减）；`0x07` 厂商动作（**不止 Fn**：基础层 `07 00 00 0D` 是 Fn 键，Fn 层另有
-  `0x01/0x05/0x06/0x07/0x08/0x0A` 六个私有动作，落在左下 Alt/Cmd 与 Z/X/C/V/G 上，语义待定）；
-  `0x08` LED/背光动作（8 个子码，落在 Space/Del/PgUp/PgDn/方向键上：`01`/`02` 成对出现在同一轴上，
-  形如"同轴加/减"）；`0x0D` 未分配。层序与 SMK 的 `_MAC_BL/_WIN_BL/_MAC_FL/_WIN_FL` 一致：
+  如 `0x00EA`=音量减）；`0x0D` 未分配。层序与 SMK 的 `_MAC_BL/_WIN_BL/_MAC_FL/_WIN_FL` 一致：
   mac/win 基础层仅 3 格不同（Alt/Gui 互换），mac/win Fn 层仅 12 格不同（F1-F12 vs 媒体/亮度）。
+* **键位表消费链**（已确认，见下节）。`0x748F` 是记录读取器：地址 =
+  `base(S) + 0x200*mode + 4*idx`，其中 `S = xdata[0x0EC8]`（`0→0xBC`、`1→0xC4`、`2→0xCC`、
+  `3→0xD4`）、`mode = xdata[0x0F25]`（0=Mac/1=Win）、`idx = xdata[0x0EC2]`；读出的 4 字节写进
+  `xdata 0x0B91..0x0B94` 再按 `byte0` 分派。`S=1`/`S=2` 读出全零时回退 `S=0`（基础层）。
+  除 4 张已确认的表外，`0xCC00/0xCE00`（S=2）和 `0xD400/0xD600`（S=3）两张表**全零**，
+  是运行时可写的槽位。逐键选择子数组是 `xdata 0x0B0F + 21*row + col`。
+* **class `0x07` = 厂商动作/组合键**（子码在 `byte3`）：`0x0D` 是 Fn 键（`07 00 00 0D`）；
+  `0x01/0x05/0x06/0x07/0x08/0x0A` 落在左下 Alt/Cmd 与 Z/X/C/V/G 上，写入
+  `xdata 0x0F29/0x0F7F/0x0B8E/0x0BAC`（厂商组合键状态机）与动作位 `BITS_35/37`；
+  `0x20/0x21` 写 Mac/Win 标志 `xdata 0x0B8F`。
+* **class `0x08` = LED/背光控制指令**（`byte1` = 动作号，`byte2` = 参数），8 条记录与副派发
+  `0x55CF` 的跳转表 `0x55F4`（10 项）**逐条对上**：`0x00`=Fn+Del（预设）、`0x02`=Fn+PgUp、
+  `0x03`=Fn+Up/Down（同轴 ±）、`0x04`=Fn+Right/Left（同轴 ±）、`0x07`=Fn+PgDn（复位）、
+  `0xFF`=Fn+Space（开关）、`0x09`=直设灯效 `xdata[0x0F65]`。主派发 `0xB90D` 只处理 `0xFF`。
+* **LED 子系统变量**：`xdata[0x0F65]` = 灯效索引（0..0x13，`0x95EE` 20 项表派发）；
+  `xdata[0x0CA1]` = 预设号（0..0x0F），经 code 表 `0xD119`
+  （`01 02 03 04 05 07 08 09 0A 0B 0C 0D 0F 10 11 13`）映射到 `0x0F65`；
+  `xdata[0x0CA0]` = 状态机状态（0..0x0A，`0x2899` 11 项表），状态机 `0x2812` 由 4 分频的
+  定时中断 `0x62E0` 调用（非按键路径）；`xdata[0x0C28]` = 灯效闩锁（`00/69/96/FF`）；
+  `xdata[0x0C29]` = 长按计数（阈值 150/200）。
+* **静态分析陷阱**：`analysis/fwdis.py` 的"可达性"输出存在大片 gap（如 `0x27B4..0x2AED`、
+  `0x9355..0x9A02`），"全固件找不到 X"类结论必须用 `--start 0 --len 0xF000` 的全量线性反汇编复核。
 * **LED 由芯片内置 PWM bank 直驱**（无外置驱动 IC）：`0x48BE-0x48FD` 写 `PWM00CON..PWM30CON`
   （4 bank × 6 通道 = 24 路），`0x46F9-0x48AB` 把 `PWMxxDUTY1L/H` / `DUTY2L/H` 设为 `0xB0`、
   `PERD=0xB0`（初值均匀，不携带走线信息）。效果渲染在 `0xD11` 起，索引的是抽象缓冲
@@ -143,8 +162,10 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
   `_WIN_BL=0 / _MAC_BL=1 / _WIN_FL=2 / _MAC_FL=3` 排列；SMK 默认层 0 即 Windows 基础层。
   Fn 键对应 `MO(_WIN_FL)`，Mac 基础层对应 `MO(_MAC_FL)`。
 * 尚缺：逐键 RGB 拓扑（走线未确定，`user_matrix_sinks_off` 目前为空）、无线模块、
-  厂商 8 个 HID collection。Fn 层落成 `KC_NO` 的共 16 格：6 个 `0x07` 私有动作 + 8 个 `0x08`
-  LED 动作 + Fn+6（`00 A0 00 21`，RShift+RGui+4）+ Fn+O（consumer `0x018A`），均带原始字节注释。
+  厂商 8 个 HID collection。Fn 层落成 `KC_NO` 的共 16 格：6 个 `0x07` 厂商动作 + 8 个 `0x08`
+  LED 控制 + Fn+6（`00 A0 00 21`，RShift+RGui+4）+ Fn+O（consumer `0x018A`），均带原始字节注释。
+  其中 `0x08` 的语义**已解码**（见上节），仍落 `KC_NO` 是因为 SMK 的灯效由自身 RGB 层管理，
+  不属于键码映射；需要保留厂商灯效行为时可据此实现。
 * USB 身份暂用 SMK 默认 `258a:dead`（板级 `options` 未覆盖），便于与厂商固件区分；
   需要沿用 `258A:019D` 时再改 `meson.build`。
 * 构建（2026-10-19 验证）：SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 /

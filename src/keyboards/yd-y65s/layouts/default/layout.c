@@ -55,19 +55,19 @@ const uint16_t keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     ),
     /* win-fn, vendor 0xC600 */
     [_WIN_FL] = LAYOUT_65(
-        KC_GRV, KC_BRID, KC_BRIU, RCTL(KC_UP), RGUI(KC_SPC), KC_MSEL, KC_NO /* chord mods 0xA0+KC_4 */, KC_MPRV, KC_MPLY, KC_MNXT, KC_MUTE, KC_VOLD, KC_VOLU, KC_NO, KC_NO /* vendor LED 00:00:00 */,
-        KC_NO, BL_TOGG, KC_VOLD, KC_VOLU, KC_MUTE, KC_MPRV, KC_MNXT, KC_MPLY, KC_MSTP, KC_NO /* consumer 0x018A */, KC_WHOM, KC_CALC, KC_WHOM, KC_NO, KC_NO /* vendor LED 02:00:00 */,
-        KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor layer action 07:00:00:0A */, KC_NO, KC_NO, KC_NO, KC_INS, KC_HOME, KC_END, KC_NO, KC_NO, KC_NO /* vendor LED 07:00:00 */,
-        KC_NO, KC_NO, KC_NO /* vendor layer action 07:00:00:05 */, KC_NO /* vendor layer action 07:00:00:06 */, KC_NO /* vendor layer action 07:00:00:07 */, KC_NO /* vendor layer action 07:00:00:08 */, KC_NO, KC_NO, KC_NO, KC_PSCR, KC_SCRL, KC_PAUS, KC_NO, KC_NO /* vendor LED 03:01:00 */, KC_NO,
-        KC_NO, KC_NO /* vendor layer action 07:00:00:01 */, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED FF:00:00 */, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED 04:02:00 */, KC_NO /* vendor LED 03:02:00 */, KC_NO /* vendor LED 04:01:00 */
+        KC_GRV, KC_BRID, KC_BRIU, RCTL(KC_UP), RGUI(KC_SPC), KC_MSEL, KC_NO /* chord mods 0xA0+KC_4 */, KC_MPRV, KC_MPLY, KC_MNXT, KC_MUTE, KC_VOLD, KC_VOLU, KC_NO, KC_NO /* vendor LED 00:00:00 (preset select -> xdata 0x0BA6) */,
+        KC_NO, BL_TOGG, KC_VOLD, KC_VOLU, KC_MUTE, KC_MPRV, KC_MNXT, KC_MPLY, KC_MSTP, KC_NO /* consumer 0x018A */, KC_WHOM, KC_CALC, KC_WHOM, KC_NO, KC_NO /* vendor LED 02:00:00 (value -> xdata 0x0B8D, BITS_13) */,
+        KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor action 07:00:00:0A long-press / BITS_37 */, KC_NO, KC_NO, KC_NO, KC_INS, KC_HOME, KC_END, KC_NO, KC_NO, KC_NO /* vendor LED 07:00:00 (latch toggle (0x0C28) + reset) */,
+        KC_NO, KC_NO, KC_NO /* vendor action 07:00:00:05 combo state 0x35, mode 1 */, KC_NO /* vendor action 07:00:00:06 combo state 0x45, mode 2 */, KC_NO /* vendor action 07:00:00:07 combo state 0x55, mode 3 */, KC_NO /* vendor action 07:00:00:08 combo state 0x25 */, KC_NO, KC_NO, KC_NO, KC_PSCR, KC_SCRL, KC_PAUS, KC_NO, KC_NO /* vendor LED 03:01:00 (axis +/- ...) */, KC_NO,
+        KC_NO, KC_NO /* vendor action 07:00:00:01 toggle 0x0BAC / BITS_17 */, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED FF:00:00 (power toggle (BITS_32 / 0x0C29)) */, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED 04:02:00 (axis +/- ...) */, KC_NO /* vendor LED 03:02:00 (axis +/- ...) */, KC_NO /* vendor LED 04:01:00 (axis +/- ...) */
     ),
     /* mac-fn, vendor 0xC400 */
     [_MAC_FL] = LAYOUT_65(
-        KC_GRV, KC_F1, KC_F2, KC_F3, KC_F4, KC_F5, KC_F6, KC_F7, KC_F8, KC_F9, KC_F10, KC_F11, KC_F12, KC_NO, KC_NO /* vendor LED 00:00:00 */,
-        KC_NO, BL_TOGG, KC_VOLD, KC_VOLU, KC_MUTE, KC_MPRV, KC_MNXT, KC_MPLY, KC_MSTP, KC_NO /* consumer 0x018A */, KC_WHOM, KC_CALC, KC_WHOM, KC_NO, KC_NO /* vendor LED 02:00:00 */,
-        KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor layer action 07:00:00:0A */, KC_NO, KC_NO, KC_NO, KC_INS, KC_HOME, KC_END, KC_NO, KC_NO, KC_NO /* vendor LED 07:00:00 */,
-        KC_NO, KC_NO, KC_NO /* vendor layer action 07:00:00:05 */, KC_NO /* vendor layer action 07:00:00:06 */, KC_NO /* vendor layer action 07:00:00:07 */, KC_NO /* vendor layer action 07:00:00:08 */, KC_NO, KC_NO, KC_NO, KC_PSCR, KC_SCRL, KC_PAUS, KC_NO, KC_NO /* vendor LED 03:01:00 */, KC_NO,
-        KC_NO, KC_NO /* vendor layer action 07:00:00:01 */, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED FF:00:00 */, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED 04:02:00 */, KC_NO /* vendor LED 03:02:00 */, KC_NO /* vendor LED 04:01:00 */
+        KC_GRV, KC_F1, KC_F2, KC_F3, KC_F4, KC_F5, KC_F6, KC_F7, KC_F8, KC_F9, KC_F10, KC_F11, KC_F12, KC_NO, KC_NO /* vendor LED 00:00:00 (preset select -> xdata 0x0BA6) */,
+        KC_NO, BL_TOGG, KC_VOLD, KC_VOLU, KC_MUTE, KC_MPRV, KC_MNXT, KC_MPLY, KC_MSTP, KC_NO /* consumer 0x018A */, KC_WHOM, KC_CALC, KC_WHOM, KC_NO, KC_NO /* vendor LED 02:00:00 (value -> xdata 0x0B8D, BITS_13) */,
+        KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor action 07:00:00:0A long-press / BITS_37 */, KC_NO, KC_NO, KC_NO, KC_INS, KC_HOME, KC_END, KC_NO, KC_NO, KC_NO /* vendor LED 07:00:00 (latch toggle (0x0C28) + reset) */,
+        KC_NO, KC_NO, KC_NO /* vendor action 07:00:00:05 combo state 0x35, mode 1 */, KC_NO /* vendor action 07:00:00:06 combo state 0x45, mode 2 */, KC_NO /* vendor action 07:00:00:07 combo state 0x55, mode 3 */, KC_NO /* vendor action 07:00:00:08 combo state 0x25 */, KC_NO, KC_NO, KC_NO, KC_PSCR, KC_SCRL, KC_PAUS, KC_NO, KC_NO /* vendor LED 03:01:00 (axis +/- ...) */, KC_NO,
+        KC_NO, KC_NO /* vendor action 07:00:00:01 toggle 0x0BAC / BITS_17 */, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED FF:00:00 (power toggle (BITS_32 / 0x0C29)) */, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO, KC_NO /* vendor LED 04:02:00 (axis +/- ...) */, KC_NO /* vendor LED 03:02:00 (axis +/- ...) */, KC_NO /* vendor LED 04:01:00 (axis +/- ...) */
     ),
 };
 

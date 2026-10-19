@@ -83,6 +83,35 @@ CONSUMER_KC = {
     0x00CF: "KC_MSEL",    # Media Select
 }
 
+# Vendor combo/mode actions (class 0x07), keyed by subcode = record byte 3.
+# Decoded from the secondary dispatcher 0x6A07 (jump table at 0x6A2C, SDCC switch
+# helper 0x2D08): see brain page matrix-and-keymap, "class 0x07 语义".
+ACTION07 = {
+    0x01: "toggle 0x0BAC / BITS_17",
+    0x05: "combo state 0x35, mode 1",
+    0x06: "combo state 0x45, mode 2",
+    0x07: "combo state 0x55, mode 3",
+    0x08: "combo state 0x25",
+    0x0A: "long-press / BITS_37",
+    0x0D: "Fn held",
+    0x20: "win-mode flag 0x0B8F=0",
+    0x21: "mac-mode flag 0x0B8F=1",
+}
+
+# Vendor LED / backlight actions (class 0x08), keyed by action = record byte 1.
+# Decoded from the secondary dispatcher 0x55CF (jump table at 0x55F4): see brain page
+# matrix-and-keymap, "class 0x08 语义".
+LED08 = {
+    0x00: "preset select -> xdata 0x0BA6",
+    0x02: "value -> xdata 0x0B8D, BITS_13",
+    0x03: "axis +/- ...",
+    0x04: "axis +/- ...",
+    0x05: "latch toggle (0x0C28)",
+    0x07: "latch toggle (0x0C28) + reset",
+    0x09: "set effect xdata 0x0F65 = b2",
+    0xFF: "power toggle (BITS_32 / 0x0C29)",
+}
+
 
 def keyboard_kc(usage: int) -> str | None:
     if 0x04 <= usage <= 0x1D:
@@ -123,10 +152,15 @@ def record_to_kc(rec: bytes, layer_index: int) -> str:
     if cls == 0x07:
         if b1 == 0 and b3 == 0x0D:
             return "FN_MAC" if layer_index in (1, 3) else "FN_WIN"
-        return f"KC_NO /* vendor layer action 07:{b1:02X}:{b2:02X}:{b3:02X} */"
+        # class 0x07 = vendor combo / mode action, subcode in b3 (see README "键位表消费链").
+        note = ACTION07.get(b3, "")
+        tail = f" {note}" if note else ""
+        return f"KC_NO /* vendor action 07:{b1:02X}:{b2:02X}:{b3:02X}{tail} */"
 
     if cls == 0x08:
-        return f"KC_NO /* vendor LED {b1:02X}:{b2:02X}:{b3:02X} */"
+        # class 0x08 = LED / backlight control, action in b1, parameter in b2.
+        note = LED08.get(b1, "?")
+        return f"KC_NO /* vendor LED {b1:02X}:{b2:02X}:{b3:02X} ({note}) */"
 
     if cls == 0x0D:
         return "KC_NO"
