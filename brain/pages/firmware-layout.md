@@ -4,7 +4,7 @@ title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T22:46:33"
+updated: "2026-10-19T22:56:13"
 ---
 
 
@@ -151,4 +151,10 @@ Python 版（`analysis/mcs51.py`）已修正。
   kind: evidence
   summary: "Sinowealth ISP bootloader 只走 USB: 反汇编内无 SBUF/SCON 引用 => 第二颗 SoC(模块)的固件无法经 8051 的 UART 读出; 8051<->模块链路是硬件 EUART(SBUF=0xAA/SCON=0xD8, TX 0xAF18/0xA3FC, RX 0x8EF5)。另: 接收器 258a:0150 已 dump 64KiB(sh68f90,MD5 38EFE2AA9E91B9A9B8A82C69E3C52DDB), 键盘两次读取逐字节一致(MD5 3F7EE6AE...), 与存档 dump 仅差 1 字节(0xA44F: 0x57 vs 0x05, 位于 0xA400..0xA47F 数据表内)"
   source: "build/fw_full.lst + firmware/backups/"
+  affects: [firmware-layout]
+
+- time: 2026-10-19T22:56:13
+  kind: reversal
+  summary: "早先『xdata 0x1130 = 模块 RX 帧 / 0x11C1 = 模块 TX 缓冲』的解读作废: get_feature(9) 返回的 519 B 描述符暂存内容说明 0x1100 起是主机厂商命令/EP0 暂存区, 0x1130/0x11C1 落在其中, 需按主机通道重解"
+  source: "tools/vendorhid.py get --report 9 实测"
   affects: [firmware-layout]

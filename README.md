@@ -193,6 +193,23 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
   （96×160 / 135×240 / 240×240 / 240×135）。该前端要求 usage page `0xFFE7`，
   而本机厂商通道是 `0xFF02`（`258a:019d`）⇒ 不能直接用，但可用于比对固件里的主机命令通道。
 
+## 主机厂商通道（usage `0xff02` / HID report 9）
+
+* 键盘 IF1 的厂商命令通道是 **col07 = `usagePage 0xff02` / `usage 0x0002`**：
+  **Input report 9 = 7 字节**（总共 8 B），**Feature report 9 = 519 字节**（总共 520 B）。
+  另有 col03 = `0xff02/0x0001`（4 B input，无 feature）。
+* 固件侧 EP0 分发（全线性反汇编）：`xdata[0x1150]` = 当前 **bRequest**，`xdata[0x0011]` = report ID、
+  `xdata[0x0012..]` = payload（经指针变量 `xdata[0x0ECF:0x0ED0]` 访问）。bRequest 9（SET_REPORT）时若
+  `[0x0011]==5 && [0x0012]==0x75` 就 `LJMP 0xB0ED` —— **这就是 sinowisp 进 ISP 的真实路径**。
+* `xdata[0x0F83:0x0F84]` 是**代码空间(flash)读指针**：`0xA78E` 从 flash 拷 8 B 到 `xdata[0x1108]` 再喂给 EP0；
+  描述符服务（`0x1575..0x1889`）与 EP0 数据泵（`0x9771..0x97F8`）都用它 ⇒ 主机可经此通道读 flash。
+* `xdata[0x0B08..0x0B0B]` 是两个 16 位计数器，界限 `0x0208 = 520` ⇒ 一个 **520 字节环形缓冲**
+  （`BITS_54` = 有待发数据，入队例程 `0x6CA2`）。
+* 实测（只读）：`get_feature(9)` 返回的是 **USB 描述符暂存区**内容 ⇒ feature 9 与 EP0 暂存区共用
+  `xdata 0x1100` 起同一块内存；空闲 12 s 内 input report 9 无任何帧（不是周期上报）。
+* 探测工具：`uv run tools/vendorhid.py list|desc|get|set|watch --vid 258a --pid 019d --page ff02 --usage 2`
+  （纯 stdlib + ctypes；代码内硬性拒绝触碰 report 5/6 与键鼠集合）。
+
 ## 自制固件路线
 
 社区已有完整可用的开源固件 **SMK**（`karstx/smk`，SDCC 构建，含 SH68F90 HAL / USB 栈 / BK3632
