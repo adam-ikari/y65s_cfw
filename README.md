@@ -34,7 +34,14 @@ src/         自制固件移植（纳入版本库）
 tools/       第三方工具与构建脚本
   fetch-tools.ps1   拉取 SMK / sinowisp（不纳入版本库的部分在 tools/smk、tools/bin）
   sync-port.ps1     把 src/keyboards/yd-y65s 同步进 tools/smk
-  build-port.ps1    sync + meson setup + ninja
+  patch-smk.ps1     幂等的 SDCC 4.6 兼容修正（const code 指针）
+  build-port.ps1    sync + patch + meson setup + ninja
+  build-ucsim.ps1   在 WSL 里构建打过补丁的 uCsim（SH68F90 USB 中断模型）
+  build-ucsim.sh    实际构建脚本（无需 root，私有解包 flex/bison）
+  sim-tests.ps1     仿真测试入口（本仓库 + SMK 与板无关的部分）
+  sim-tests.sh      实际测试脚本
+tests/       仿真测试（在 WSL 里用打过补丁的 uCsim 跑固件）
+  test_y65s_sim.py  YD-Y65S 列线模型：矩阵 → 扫描 → 键位 → HID 报告
 build/       生成的清单/报告/构建目录（不纳入版本库）
 brain/       项目知识库（通过 `brain` CLI 读写，勿手改）
 ```
@@ -65,6 +72,10 @@ uv run analysis/gen_smk_layout.py firmware/YD-Y65S_firmware.bin `
 powershell -ExecutionPolicy Bypass -File tools\fetch-tools.ps1
 powershell -ExecutionPolicy Bypass -File tools\build-port.ps1
 # 产物：build/smk-yd-y65s/yd-y65s_default_smk.hex
+
+# 仿真验证（需要 WSL；模拟器是 Linux 二进制，在其中构建一次）
+powershell -ExecutionPolicy Bypass -File tools\build-ucsim.ps1
+powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 ```
 
 ## 已确认的关键事实
@@ -132,6 +143,11 @@ powershell -ExecutionPolicy Bypass -File tools\build-port.ps1
 * SDCC 4.6 新增 error 357（code 空间指针必须为 const），SMK 需要两处 `const` 修正；
   `tools/patch-smk.ps1` 幂等地应用到 `tools/smk`。其他官方板（如 nuphy-air60）在 4.6 下仍有
   opt 错误，因此 `build-port.ps1` 只编译 `yd-y65s_default_smk.hex` 目标。
+* **仿真验证通过（2026-10-19，WSL + 打过补丁的 uCsim 0.8.15）**：SMK 与板无关的 27 项测试
+  （启动到主循环、USB 枚举、描述符分包、HID idle/protocol/LED、ISP 跳转握手、中断向量压栈、
+  栈溢出）全部通过；`tests/test_y65s_sim.py` 另用 YD-Y65S 列线模型验证 4 个按键位置，
+  期望值直接取自 dump（矩阵 → 扫描 → 键位 → HID 报告）。SMK 自带的 Air60 按键测试因板级
+  接线不同被排除——同一个测试位置在本机解析为 HID `0x0F`（L）而不是 `0x04`（A）。
 * 仍**未**向设备写入任何数据。
 
 ## 致谢

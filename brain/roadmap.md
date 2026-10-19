@@ -2,7 +2,7 @@
 slug: roadmap
 title: Roadmap
 role: milestones
-updated: "2026-10-19T19:08:12"
+updated: "2026-10-19T19:37:40"
 ---
 
 # Roadmap
@@ -22,12 +22,12 @@ gantt
   LED 驱动方式确认 (PWM bank 直驱)         :done, b2, after b1, 1d
   Windows 构建环境 (SDCC + meson + ninja)  :done, c1, 2026-10-19, 1d
   yd-y65s 板级目录 + 首次 hex 构建          :done, c2, after c1, 1d
+  仿真验证 (ucsim-sh68f90)                 :done, c3, after c2, 1d
   section 进行中
-  仿真验证 (ucsim-sh68f90)                 :active, c3, 2026-10-20, 3d
+  逆向逐键 RGB 拓扑                         :active, c6, 2026-10-20, 3d
   section 待开始
-  物理按键/台架核对矩阵列序与 LED 通道     :c5, after c2, 1d
-  逆向逐键 RGB 拓扑                         :c6, after c2, 3d
-  写入验证 (需用户明确许可)                :crit, c4, after c3, 1d
+  物理按键/台架核对矩阵列序与 LED 通道     :c5, after c3, 1d
+  写入验证 (需用户明确许可)                :crit, c4, after c5, 1d
 ```
 
 ## 当前状态
@@ -44,10 +44,12 @@ gantt
   （SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 / sinowisp 2.1.0），
   产物 `build/smk-yd-y65s/yd-y65s_default_smk.hex`；CSEG ≈13.7 KiB + CONST ≈1.2 KiB。
   ISP 逃生桩 `75 F0 A5 74 5A 02 FF 00` @ `0x2811` 保留。细节见页面 `smk-port`。
-* **进行中**：仿真验证（`ucsim-sh68f90`；SMK 的 ucsim 需要单独构建，meson 当前报
-  `Program ucsim-sh68f90 found: NO`）。
+* **仿真验证已通过（2026-10-19）**：WSL 里构建补丁版 uCsim 0.8.15（`tools/build-ucsim.*`），
+  `tools/sim-tests.ps1` 跑 29 项全绿——复位→主循环、USB 枚举到 CONFIGURED、描述符/LED/
+  idle/protocol、**真实 `isp_jump()` 握手**、中断向量压栈，以及本仓库
+  `tests/test_y65s_sim.py` 用 YD-Y65S 列线模型核验的 4 个按键位置（期望值取自 dump）。
+* **进行中**：逆向逐键 RGB 拓扑（P4.4/P4.7、P7.4-P7.6 的角色与 Fn 层 `0x08` 子码语义）。
 * **阻塞**：无。
 * **红线**：写入验证必须等用户明确许可（见 `no-write-policy`）。
 * **待证**：扫描列序"从左到右"与 PWM 通道↔物理列的对应为推断，需按键/台架核对；
-  逐键 RGB 拓扑（P4.4/P4.7、P7.4-P7.6 的角色）与 Fn 层 `0x08` 子码语义未解析；
-  class `0x07`/`0x08` 的运行时派发路径尚未完整走通。
+  仿真只覆盖 MCU 模型 + 测试侧矩阵，未覆盖真实 RGB/RF 硬件与供电差异。

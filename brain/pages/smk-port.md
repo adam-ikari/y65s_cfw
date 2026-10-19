@@ -5,14 +5,14 @@ category: reference
 status: active
 tags: [smk, port, build, sdcc]
 created: "2026-10-19T19:07:35"
-updated: "2026-10-19T19:07:53"
+updated: "2026-10-19T19:37:18"
 ---
 
 <!-- compiled_truth -->
 ## 结论
 
-YD-Y65S 的 SMK 移植已经从"计划"变成**可编译的板级目录 + 可复现的构建链路**，产物为
-`build/smk-yd-y65s/yd-y65s_default_smk.hex`。尚未写入设备。
+YD-Y65S 的 SMK 移植已经从"计划"变成**可编译、可在仿真里跑通的板级目录 + 可复现的构建/验证链路**，
+产物为 `build/smk-yd-y65s/yd-y65s_default_smk.hex`。尚未写入设备。
 
 ## 仓库布局
 
@@ -26,6 +26,8 @@ YD-Y65S 的 SMK 移植已经从"计划"变成**可编译的板级目录 + 可复
   避免手抄键位。改板级目录后应重新生成再构建。
 * `tools/build-port.ps1` — sync + patch + `meson setup` + 只编译
   `yd-y65s_default_smk.hex`。
+* `tests/test_y65s_sim.py` — 仿真测试：YD-Y65S 列线模型驱动矩阵，断言解析出的
+  HID 用法与 dump 一致。`tools/sim-tests.ps1` / `sim-tests.sh` 跑它 + SMK 与板无关的测试。
 
 ## 板级映射
 
@@ -83,14 +85,37 @@ class `0x08`（LED 动作）与多修饰组合键 → `KC_NO /* 原始字节 */`
 * `yd-y65s_default_smk.interrupts-ok` 通过（无未声明中断向量 / ISR overlay 冲突）。
 * `75 F0 A5 74 5A 02 FF 00` 位于 `0x2811`，`_isp_jump` @ `0x280F`；
   与厂商的 ISP 逃生桩一致。
-* 仍未执行任何 flash 写入/擦除。
+
+## 仿真验证（2026-10-19）
+
+模拟器是 Linux 二进制，只在 WSL 内构建/运行，Windows 侧不需要额外东西。
+
+* 构建：`tools/build-ucsim.ps1` → `tools/build-ucsim.sh`。复刻 SMK flake 的派生：
+  取 SDCC **4.5.0** 源码，套用 `tools/ucsim/sh68f90-register.patch`，拷入
+  `sh68f90.cc`/`sh68f90cl.h`，`flex` 重新生成 `cmdlex.cc`，只 `configure` 出 mcs51 模拟器。
+  **无需 root**：flex/bison 用 `apt-get download` 取 .deb 再 `dpkg-deb -x` 到私有前缀；
+  bison 必须设 `BISON_PKGDATADIR` 指向解包目录（否则找不到 `m4sugar.m4`）。
+  产物 `~/ucsim-build/sdcc-4.5.0/sim/ucsim/src/sims/s51.src/ucsim_51`。
+* 运行：`tools/sim-tests.ps1` → `tools/sim-tests.sh`，跑两组共 29 项，全部通过
+  （SMK 1 项按板跳过）：
+  1. `tests/test_y65s_sim.py`：YD-Y65S 列线模型 + 真实扫描路径，断言 EP1 报告等于
+     dump 中 win-base 层在该 (col,row) 的用法（Esc/W/A/D 四个位置，覆盖 P6/P5/P4）。
+  2. SMK 与板无关的测试：复位→主循环、USB 枚举到 CONFIGURED、描述符分包、HID
+     idle/protocol/LED、字符串描述符、中断向量压栈、栈溢出。
+* 关键证据：`test_set_report_isp_jumps_to_bootloader` 证明 feature report id 5 + OUT
+  `05 75` 真的执行了 `isp_jump()`（ACC=0x5A / B=0xA5）——即新固件的逃生通道在仿真里可用。
+* SMK 自带的 `TestKeyEvent` / `TestWorstCaseStack` 用的是 **Air60 列线**（`devices.py`
+  顶部硬编码），在本机上会把 (col=1,row=2) 认成 Air60 的 P5.1，而固件扫的是 P6.1，
+  于是解析到 HID `0x0F`（L）而非 `0x04`（A）。这是**测试模型**的差异，不是固件缺陷；
+  已由本仓库的 YD-Y65S 模型取代，故 `sim-tests.sh` 排除这两个类。
 
 ## 待办
 
 1. 物理核对：列顺序（"left to right" 目前是推断）与 PWM 通道↔物理列。
 2. 逆向逐键 RGB 拓扑（P4.4/P4.7、P7.4-P7.6 的角色；`0x08` LED 子码语义）。
 3. 决定是否接入无线（BK3632）与厂商额外 HID collection。
-4. 在 ucsim-sh68f90 里跑通，再考虑经用户许可后的首次写入。
+4. 首次写入设备必须经用户明确许可（见 `no-write-policy`）；写入前后用 `sinowisp read`
+   回读校验。
 
 
 ## Timeline
@@ -105,4 +130,16 @@ class `0x08`（LED 动作）与多修饰组合键 → `KC_NO /* 原始字节 */`
   kind: decision
   summary: "记录板级目录、键位生成器、Windows 构建链路与 SDCC 4.6 const 修正；首次构建通过"
   source: "tools/build-port.ps1 + src/keyboards/yd-y65s"
+  affects: [smk-port]
+
+- time: 2026-10-19T19:12:21
+  kind: evidence
+  summary: "新固件的 ISP 触发路径与厂商一致：feature report id 5 -> EP0 OUT 05 75 -> usb_isp_requested=1 -> isp_jump()（src/smk/usb.c:1086/1161/461）；链接后桩位于 0x280F"
+  source: "tools/smk/src/smk/usb.c + build map"
+  affects: [smk-port, custom-firmware-path]
+
+- time: 2026-10-19T19:37:18
+  kind: decision
+  summary: "仿真验证通过：WSL 里构建补丁版 uCsim 0.8.15，29 项测试全绿（含真实 isp_jump 握手）；新增 tests/test_y65s_sim.py 用 YD-Y65S 列线模型核验键位"
+  source: "tests/test_y65s_sim.py + tools/build-ucsim.sh + tools/sim-tests.sh"
   affects: [smk-port]

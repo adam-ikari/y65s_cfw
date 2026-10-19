@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T19:07:18"
+updated: "2026-10-19T19:38:16"
 ---
 
 
@@ -38,7 +38,8 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
    `analysis/gen_smk_layout.py` 从 dump 逐格生成，层序为
    `_WIN_BL=0 / _MAC_BL=1 / _WIN_FL=2 / _MAC_FL=3`，即 SMK 默认层 0 = Windows 基础层。
 3. **保留逃生通道**：`-Disp=enabled`（默认）。构建产物中
-   `75 F0 A5 74 5A 02 FF 00` 位于 `_isp_jump`（本次链接 @ `0x280F`），与厂商桩一致。
+   `75 F0 A5 74 5A 02 FF 00` 位于 `_isp_jump`（本次链接 @ `0x280F`），与厂商桩一致；
+   仿真里 feature report id 5 + OUT `05 75` 确实进入 `isp_jump()`。
 4. ~~**构建**：SDCC + meson + ninja。~~ **已完成（2026-10-19）**：
    SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 / sinowisp 2.1.0；
    `tools/build-port.ps1` 产出 `build/smk-yd-y65s/yd-y65s_default_smk.hex`
@@ -46,7 +47,10 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
    SDCC 4.6 新增 error 357（code 空间指针必须为 const），由
    `tools/patch-smk.ps1` 对 `src/smk/usb.c` 与 `src/sino51lib/flash.c` 做幂等修正；
    脚本只编译 `yd-y65s_default_smk.hex`，因为其他官方板在 4.6 下仍会触发 opt 错误。
-5. **验证**：先只用 `sinowisp read` 回读校验，不写入；写入必须另行获得许可。
+5. **验证**：**仿真已跑通（2026-10-19）**——WSL 里构建补丁版 uCsim，29 项测试全绿
+   （启动/枚举/描述符/HID/ISP/中断/栈 + YD-Y65S 键位核验），见 `smk-port` 与
+   `tools/build-ucsim.*`、`tools/sim-tests.*`。上机前只用 `sinowisp read` 回读校验，
+   写入必须另行获得许可。
 
 ## 风险
 
@@ -55,6 +59,7 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   本机目前没有。
 * 无线部分（若本机实际带 BK3632）在 SMK 中仍是 `[~]` 未完成状态。
 * 矩阵列序与 PWM 通道↔物理列的对应尚为推断，移植前应尽量用按键/台架核对。
+* 仿真只覆盖 MCU 模型 + 测试侧的矩阵，未覆盖真实 RGB/RF 硬件、供电与 USB 主机的差异。
 * 逐键 RGB 拓扑尚未解析：当前 `user_matrix_sinks_off` 为空、未定义 `led_cols`；
   Fn 层的 `0x08` LED 动作与 SMK 无法表达的多修饰组合键暂以 `KC_NO /* ... */` 保留。
 * 未接入厂商的 8 个 HID collection；SMK 只提供标准 keyboard / NKRO / consumer 等。
@@ -92,4 +97,10 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   kind: decision
   summary: "板级目录、键位生成器与 Windows 构建链路完成；yd-y65s_default_smk.hex 在 SDCC 4.6.0 下构建通过，ISP 跳转桩保留"
   source: "tools/build-port.ps1 + analysis/gen_smk_layout.py"
+  affects: [custom-firmware-path]
+
+- time: 2026-10-19T19:38:16
+  kind: decision
+  summary: "第 5 步（验证）在仿真里跑通：29 项测试全绿，含真实 isp_jump 握手与 YD-Y65S 键位核验；写入设备仍需明确许可"
+  source: "tools/sim-tests.sh + tests/test_y65s_sim.py"
   affects: [custom-firmware-path]
