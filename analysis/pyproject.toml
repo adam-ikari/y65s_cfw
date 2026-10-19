@@ -1,0 +1,9 @@
+[project]
+name = "y65s-re"
+version = "0.1.0"
+description = "Reverse-engineering toolkit for the YD-Y65S (Sinowealth SH68F9x 8051) keyboard firmware"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false

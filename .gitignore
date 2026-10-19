@@ -1,0 +1,23 @@
+# generated analysis output
+build/
+*.lst
+*.ihex
+*.ihx
+*.hex
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+uv.lock
+
+# third-party tools (fetch with tools/fetch-tools.ps1)
+tools/smk/
+tools/sinowisp/
+tools/bin/
+
+# editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
