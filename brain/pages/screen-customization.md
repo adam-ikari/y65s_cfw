@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-19T23:09:46"
+updated: "2026-10-20T00:20:18"
 ---
 
 <!-- compiled_truth -->
@@ -117,4 +117,10 @@ updated: "2026-10-19T23:09:46"
   kind: decision
   summary: "在原有内容后追加『可行性判定(2026-10-19)』：给模组换自制固件不可行(读不到/型号未知/无烧写通道)；可行的是把应用跑在主控/PC 侧，走 feature 9 -> 520B -> 模块 的内容管道；下一步需实测 520B 块语义"
   source: "build/fw_full.lst + README 模块链路节"
+  affects: [screen-customization]
+
+- time: 2026-10-20T00:20:18
+  kind: evidence
+  summary: "实测打通主机→屏幕内容通路: feature9 记录 cmd 0x04 可注入 ODM 包(时间包触发屏幕时钟重置为正确现实时间), cmd 0x0D/0x0C(灯效模式2)实测切换了屏幕背景(显示人物图). 下一步: ODM SET_TFT_BUILT_IN_INDEX(81)/SET_TFT_USER_ANIMATION(80)"
+  source: "build/probe/payload_rec04_time.bin, payload_rec04_t2/t3.bin, payload_cmd0d/0c.bin; fw_full.lst 0x6346-0x6495"
   affects: [screen-customization]

@@ -19,8 +19,14 @@ Usage
   uv run tools/vendorhid.py list
   uv run tools/vendorhid.py desc --vid 258a --pid 019d
   uv run tools/vendorhid.py get  --vid 258a --pid 019d --report 9
-  uv run tools/vendorhid.py get  --vid 258a --pid 019d --report 9 --repeat 20 --interval 0.2
+  uv run tools/vendorhid.py get  --vid 258a --pid 019d --report 9 --out before.bin
   uv run tools/vendorhid.py set  --vid 258a --pid 019d --report 9 --data "00 00"
+  uv run tools/vendorhid.py set  --vid 258a --pid 019d --report 9 --file block.bin
+  uv run tools/vendorhid.py watch --vid 258a --pid 019d --seconds 10
+
+`get --out` saves what the device returned verbatim (byte 0 = report ID as the
+device placed it), `set --file` sends a raw payload (the report ID is prepended
+by this tool), so `get`/`set` of the same file are directly comparable.
 """
 
 from __future__ import annotations
@@ -392,6 +398,10 @@ def cmd_get(args) -> int:
         print(f"[{n:3d}] get_feature id={args.report} ok={bool(ok)} err={err} "
               f"len={length}")
         print("      " + " ".join(f"{b:02x}" for b in raw))
+        if args.out:
+            with open(args.out, "wb") as fh:
+                fh.write(raw)
+            print(f"      -> {args.out}")
         if not ok:
             break
         if n + 1 < args.repeat:
@@ -402,17 +412,32 @@ def cmd_get(args) -> int:
 def cmd_set(args) -> int:
     e = pick(enumerate_hid(), args)
     guard(e, args.report)
-    payload = bytes(int(t, 16) for t in args.data.split())
+    if args.data is None and args.file is None:
+        raise SystemExit("要么 --data \"xx xx\"，要么 --file <path>")
+    if args.file is not None:
+        with open(args.file, "rb") as fh:
+            payload = fh.read()
+    else:
+        payload = bytes(int(t, 16) for t in args.data.split())
     caps = e["caps"]
     length = max(caps.FeatureReportByteLength, args.report + 1)
     if len(payload) + 1 > length:
         raise SystemExit(f"数据太长: {len(payload)} B + id > {length}")
-    buf = ctypes.create_string_buffer(length)
-    buf[0] = bytes([args.report])
-    buf[1 : 1 + len(payload)] = payload
-    ok = hid.HidD_SetFeature(e["handle"], buf, length)
-    print(f"set_feature id={args.report} ok={bool(ok)} err={ctypes.get_last_error()}")
-    print("      " + " ".join(f"{b:02x}" for b in buf.raw))
+    if len(payload) == 0:
+        raise SystemExit("空的 payload 不发（避免发出只有 report ID 的 0 长请求）")
+    for n in range(args.repeat):
+        buf = ctypes.create_string_buffer(length)
+        buf[0] = bytes([args.report])
+        buf[1 : 1 + len(payload)] = payload
+        ok = hid.HidD_SetFeature(e["handle"], buf, length)
+        print(f"[{n:3d}] set_feature id={args.report} payload={len(payload)} B "
+              f"ok={bool(ok)} err={ctypes.get_last_error()}")
+        if n == 0:
+            print("      " + " ".join(f"{b:02x}" for b in buf.raw))
+        if not ok:
+            break
+        if n + 1 < args.repeat:
+            time.sleep(args.interval)
     return 0
 
 
@@ -475,12 +500,16 @@ def main(argv: list[str]) -> int:
     p.add_argument("--report", type=parse_hex, required=True)
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--interval", type=float, default=0.2)
+    p.add_argument("--out", default=None, help="把设备返回的原始字节存到文件")
     p.set_defaults(func=cmd_get)
 
     p = sub.add_parser("set", help="写 feature report（危险，已挡住 ISP 报告）")
     common(p)
     p.add_argument("--report", type=parse_hex, required=True)
-    p.add_argument("--data", required=True, help='十六进制字节，如 "00 00"')
+    p.add_argument("--data", default=None, help='十六进制字节，如 "00 00"')
+    p.add_argument("--file", default=None, help="从文件读原始 payload（report ID 由工具补）")
+    p.add_argument("--repeat", type=int, default=1, help="重复发送同一块（默认 1）")
+    p.add_argument("--interval", type=float, default=0.5, help="重复之间的间隔秒数")
     p.set_defaults(func=cmd_set)
 
     p = sub.add_parser("watch", help="监听 input report（纯读取）")
