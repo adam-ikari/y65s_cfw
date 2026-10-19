@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [smk, port, build, sdcc]
 created: "2026-10-19T19:07:35"
-updated: "2026-10-19T19:37:18"
+updated: "2026-10-19T21:02:03"
 ---
 
 <!-- compiled_truth -->
@@ -59,7 +59,7 @@ Fn 键在 win 基础层是 `MO(_WIN_FL)`，在 mac 基础层是 `MO(_MAC_FL)`。
 
 映射规则：class `0x00` 键盘（单修饰键→`KC_*`，单修饰组合→`LCTL(kc)` 等）、
 class `0x02` consumer（音量/媒体/亮度等）、class `0x07` → `MO(...)`、
-class `0x08`（LED 动作）与多修饰组合键 → `KC_NO /* 原始字节 */`。
+class `0x08`（LED 控制指令：动作号 = `byte1`、参数 = `byte2`）与多修饰组合键 → `KC_NO /* 原始字节 */`。
 这些注释是有意保留的 TODO 锚点。
 
 ## 构建环境（Windows）
@@ -112,7 +112,7 @@ class `0x08`（LED 动作）与多修饰组合键 → `KC_NO /* 原始字节 */`
 ## 待办
 
 1. 物理核对：列顺序（"left to right" 目前是推断）与 PWM 通道↔物理列。
-2. 逆向逐键 RGB 拓扑（P4.4/P4.7、P7.4-P7.6 的角色；`0x08` LED 子码语义）。
+2. 逆向逐键 RGB 拓扑（P4.4/P4.7、P7.4-P7.6 的角色）。`0x08` LED 子码语义已解码（见 `matrix-and-keymap` 页）。
 3. 决定是否接入无线（BK3632）与厂商额外 HID collection。
 4. 首次写入设备必须经用户明确许可（见 `no-write-policy`）；写入前后用 `sinowisp read`
    回读校验。
@@ -143,3 +143,15 @@ class `0x08`（LED 动作）与多修饰组合键 → `KC_NO /* 原始字节 */`
   summary: "仿真验证通过：WSL 里构建补丁版 uCsim 0.8.15，29 项测试全绿（含真实 isp_jump 握手）；新增 tests/test_y65s_sim.py 用 YD-Y65S 列线模型核验键位"
   source: "tests/test_y65s_sim.py + tools/build-ucsim.sh + tools/sim-tests.sh"
   affects: [smk-port]
+
+- time: 2026-10-19T21:02:03
+  kind: decision
+  summary: "class 0x08 LED 子码语义已解码，移植仍映射 KC_NO"
+  source: "matrix-and-keymap 页面 + analysis/gen_smk_layout.py"
+  affects: [smk-port]
+
+- time: 2026-10-19T21:02:03
+  kind: decision
+  summary: "确认 class 0x08 是 LED/背光控制指令（动作号 byte1、参数 byte2），8 条记录与副派发 0x55CF 跳转表逐条对上；移植端仍映射为 KC_NO + 原始字节注释，因为 SMK 的灯效由自身 RGB 层管理；剩余未解的是 PWM 通道↔物理灯"
+  source: "brain/pages/matrix-and-keymap.md + analysis/gen_smk_layout.py"
+  affects: [smk-port matrix-and-keymap]
