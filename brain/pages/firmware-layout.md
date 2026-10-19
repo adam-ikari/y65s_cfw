@@ -1,11 +1,12 @@
 ---
 id: firmware-layout
-title: "\""
+title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T16:46:41"
+updated: "2026-10-19T17:50:04"
 ---
+
 
 <!-- compiled_truth -->
 ## 芯片与 flash 划分
@@ -91,3 +92,9 @@ Python 版（`analysis/mcs51.py`）已修正。
   summary: "\""
   source: brain update-truth
   affects: [firmware-layout]
+
+- time: 2026-10-19T17:50:04
+  kind: decision
+  summary: "确认矩阵引脚(15列/5行)与 0xBC00-0xCC00 四层键位表格式，LED 为内置 PWM bank 直驱；细节见 matrix-and-keymap"
+  source: "analysis/keymap.py + fwdis.py"
+  affects: [firmware-layout, matrix-and-keymap]

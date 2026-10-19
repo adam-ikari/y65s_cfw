@@ -1,6 +1,6 @@
 ---
 id: no-write-policy
-title: "\""
+title: "写入禁令 (No-Write Policy)"
 category: decision
 status: active
 created: "2026-10-19T16:46:16"

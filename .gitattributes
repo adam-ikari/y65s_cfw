@@ -1,0 +1,8 @@
+# Keep this file LF so its own patterns are parsed cleanly under core.autocrlf.
+.gitattributes text eol=lf
+
+# The `brain` CLI writes LF, and its frontmatter updater (setFrontmatterField)
+# fails to match keys on CRLF lines, so it appends duplicate `updated:` keys.
+# With core.autocrlf=true and no attribute, git restores CRLF into the working
+# tree on every checkout and re-breaks the brain. Pin the brain to LF.
+brain/** text eol=lf
