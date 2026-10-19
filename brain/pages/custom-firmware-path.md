@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T17:50:37"
+updated: "2026-10-19T19:07:18"
 ---
 
 
@@ -31,15 +31,21 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
 1. ~~**确定硬件连接**：从厂商固件 `0x35E8` 的扫描跳转表 + `ports` 分析推出矩阵行列引脚，
    并确认 LED 是 PWM bank 直驱还是外置驱动 IC。~~ **已完成**：矩阵 15 列 × 5 行、
    键位表 4 层格式、LED 内置 PWM bank 直驱，细节见 `matrix-and-keymap`。
-2. **新建板级目录** `src/keyboards/yd-y65s/`：`kbdef.h`（`MATRIX_ROWS/COLS`、行/列引脚、
-   LED PWM 映射、`LED_CAPS`）、`user_matrix.c`、`kb.c`、`user_init.c`、`user_sleep.c`、
-   `layouts/default/{layout,indicators}.c`，并在 `src/keyboards/meson.build` 注册。
-   直接可用的输入：`MATRIX_COLS 15`、`MATRIX_ROWS 5`、`COL_PINS = {P6.0-P6.7, P5.0-P5.2,
-   P5.7, P4.0, P7.7, P4.5}`、`ROW_PINS = {P7.1, P7.2, P7.3, P5.3, P5.4}`、4 层键位按
-   `analysis/keymap.py` 输出转换为 SMK layout。
-3. **保留逃生通道**：`-Disp=enabled`（默认），确保厂商 HID feature report `05 75` 仍能触发
-   `isp_jump()`；这是砖机与不砖机的分界线。
-4. **构建**：SDCC + meson + ninja，`meson compile -C build yd-y65s_default_smk.hex`。
+2. ~~**新建板级目录** `src/keyboards/yd-y65s/`。~~ **已完成（2026-10-19）**：
+   `kbdef.h` / `user_matrix.c` / `user_init.c` / `kb.c` / `user_sleep.c` /
+   `layouts/default/layout.c` / `meson.build` 已入库；`tools/sync-port.ps1` 把它镜像进
+   `tools/smk/src/keyboards/yd-y65s`（SMK 本身不入库）。键位表由
+   `analysis/gen_smk_layout.py` 从 dump 逐格生成，层序为
+   `_WIN_BL=0 / _MAC_BL=1 / _WIN_FL=2 / _MAC_FL=3`，即 SMK 默认层 0 = Windows 基础层。
+3. **保留逃生通道**：`-Disp=enabled`（默认）。构建产物中
+   `75 F0 A5 74 5A 02 FF 00` 位于 `_isp_jump`（本次链接 @ `0x280F`），与厂商桩一致。
+4. ~~**构建**：SDCC + meson + ninja。~~ **已完成（2026-10-19）**：
+   SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 / sinowisp 2.1.0；
+   `tools/build-port.ps1` 产出 `build/smk-yd-y65s/yd-y65s_default_smk.hex`
+   （CSEG ≈ 13.7 KiB + CONST ≈ 1.2 KiB，远小于 60 KiB 应用区）。
+   SDCC 4.6 新增 error 357（code 空间指针必须为 const），由
+   `tools/patch-smk.ps1` 对 `src/smk/usb.c` 与 `src/sino51lib/flash.c` 做幂等修正；
+   脚本只编译 `yd-y65s_default_smk.hex`，因为其他官方板在 4.6 下仍会触发 opt 错误。
 5. **验证**：先只用 `sinowisp read` 回读校验，不写入；写入必须另行获得许可。
 
 ## 风险
@@ -49,6 +55,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   本机目前没有。
 * 无线部分（若本机实际带 BK3632）在 SMK 中仍是 `[~]` 未完成状态。
 * 矩阵列序与 PWM 通道↔物理列的对应尚为推断，移植前应尽量用按键/台架核对。
+* 逐键 RGB 拓扑尚未解析：当前 `user_matrix_sinks_off` 为空、未定义 `led_cols`；
+  Fn 层的 `0x08` LED 动作与 SMK 无法表达的多修饰组合键暂以 `KC_NO /* ... */` 保留。
+* 未接入厂商的 8 个 HID collection；SMK 只提供标准 keyboard / NKRO / consumer 等。
 
 ## 为什么不是其他路线
 
@@ -77,4 +86,10 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   kind: decision
   summary: "移植步骤 1（确定矩阵引脚与 LED 驱动方式）已完成，可直接用 matrix-and-keymap 的引脚/层数据构建板级目录"
   source: "analysis/keymap.py + fwdis.py"
+  affects: [custom-firmware-path]
+
+- time: 2026-10-19T19:07:18
+  kind: decision
+  summary: "板级目录、键位生成器与 Windows 构建链路完成；yd-y65s_default_smk.hex 在 SDCC 4.6.0 下构建通过，ISP 跳转桩保留"
+  source: "tools/build-port.ps1 + analysis/gen_smk_layout.py"
   affects: [custom-firmware-path]

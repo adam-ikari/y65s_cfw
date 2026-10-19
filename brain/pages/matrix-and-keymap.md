@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [matrix, keymap, sh68f90, yd-y65s]
 created: "2026-10-19T17:49:43"
-updated: "2026-10-19T17:54:30"
+updated: "2026-10-19T19:08:25"
 ---
 
 <!-- compiled_truth -->
@@ -121,3 +121,9 @@ uv run analysis/keymap.py check firmware/YD-Y65S_firmware.bin
   summary: "补充运行时键处理事实：0x0ED7 记录缓冲、0x2CF0 写回原语、0x0CA0 状态机；并记录 0xBC00 未被字面地址 MOVC 读取的开放问题"
   source: "fwdis.py dis/find 静态分析"
   affects: [matrix-and-keymap]
+
+- time: 2026-10-19T19:08:25
+  kind: evidence
+  summary: "SMK 板级目录按本页的 COL_PINS/ROW_PINS 实现；P6CR=0xFF、P5CR=0x87 与列掩码完全一致，P7CR/P4CR 多出的 P7.4-P7.6、P4.4/P4.7 不当作列（疑似 RGB），留待 LED 逆向"
+  source: "src/keyboards/yd-y65s/user_matrix.c + user_init.c"
+  affects: [matrix-and-keymap, smk-port]

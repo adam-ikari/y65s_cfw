@@ -22,13 +22,20 @@
 ```
 firmware/    只读 dump（完整 64 KiB / 应用 60 KiB / bootloader 4 KiB）
 analysis/    Python 分析工具链（纯标准库，uv 运行）
-  mcs51.py     精确 MCS-51 反汇编器 + Intel HEX 读写
-  fwdis.py     CLI：info / dis / xref / sfr / xdata / ports / strings / find
-  usbdesc.py   USB 设备/配置/字符串/HID 报告描述符解析器
-  keymap.py    键位表解码：dump / list / check（矩阵引脚 + 4 层 4 字节记录）
-  tools/       早期 JS 原型（已被 Python 版取代，留作参考）
-tools/       第三方工具（不纳入版本库，见 tools/fetch-tools.ps1）
-build/       生成的清单/报告（不纳入版本库）
+  mcs51.py          精确 MCS-51 反汇编器 + Intel HEX 读写
+  fwdis.py          CLI：info / dis / xref / sfr / xdata / ports / strings / find
+  usbdesc.py        USB 设备/配置/字符串/HID 报告描述符解析器
+  keymap.py         键位表解码：dump / list / check（矩阵引脚 + 4 层 4 字节记录）
+  gen_smk_layout.py 从 dump 生成 SMK `layout.c`（保证移植与厂商键位逐格一致）
+  tools/            早期 JS 原型（已被 Python 版取代，留作参考）
+src/         自制固件移植（纳入版本库）
+  keyboards/yd-y65s/  SMK 板级目录：kbdef.h / user_matrix.c / user_init.c /
+                      kb.c / user_sleep.c / layouts/default/layout.c
+tools/       第三方工具与构建脚本
+  fetch-tools.ps1   拉取 SMK / sinowisp（不纳入版本库的部分在 tools/smk、tools/bin）
+  sync-port.ps1     把 src/keyboards/yd-y65s 同步进 tools/smk
+  build-port.ps1    sync + meson setup + ninja
+build/       生成的清单/报告/构建目录（不纳入版本库）
 brain/       项目知识库（通过 `brain` CLI 读写，勿手改）
 ```
 
@@ -49,6 +56,15 @@ uv run analysis/usbdesc.py firmware/YD-Y65S_firmware.bin --strings --string-rang
 uv run analysis/keymap.py dump  firmware/YD-Y65S_firmware.bin --layer 0   # 列 × 行网格
 uv run analysis/keymap.py list  firmware/YD-Y65S_firmware.bin --layer 2   # 已分配的键
 uv run analysis/keymap.py check firmware/YD-Y65S_firmware.bin             # 副本校验 + 层间差异
+
+# 从 dump 重新生成 SMK 键位（移植与厂商键位逐格一致）
+uv run analysis/gen_smk_layout.py firmware/YD-Y65S_firmware.bin `
+    > src/keyboards/yd-y65s/layouts/default/layout.c
+
+# 构建自制固件（需要 sdcc / meson / ninja / gcc，见下）
+powershell -ExecutionPolicy Bypass -File tools\fetch-tools.ps1
+powershell -ExecutionPolicy Bypass -File tools\build-port.ps1
+# 产物：build/smk-yd-y65s/yd-y65s_default_smk.hex
 ```
 
 ## 已确认的关键事实
@@ -94,9 +110,29 @@ uv run analysis/keymap.py check firmware/YD-Y65S_firmware.bin             # 副�
 无线支持），与本机同 PID 平台的 SuperFrame Phantom 已在 `sinowisp` 设备表中。移植工作量集中在：
 
 1. ~~用厂商固件确定矩阵行列引脚与 LED 驱动方式（PWM bank 映射）。~~（已完成，见上）
-2. 新建 `src/keyboards/yd-y65s/`（`kbdef.h` / `user_matrix.c` / `kb.c` / layout）。
+2. ~~新建 `src/keyboards/yd-y65s/`（`kbdef.h` / `user_matrix.c` / `kb.c` / layout）。~~（已完成）
 3. 保留 ISP 跳转与厂商 HID feature report，确保任何时候都能回到 bootloader。
-4. 工具链：SDCC + meson + ninja + `sinowisp`（Windows 下需自行准备，SMK 官方走 Nix）。
+4. ~~工具链：SDCC + meson + ninja + `sinowisp`。~~（已完成，Windows 下可用 scoop + uv）
+
+### 移植现状（SMK）
+
+* 板级目录 `src/keyboards/yd-y65s/`：`kbdef.h`、`user_matrix.c`、`user_init.c`、`kb.c`、
+  `user_sleep.c`、`layouts/default/layout.c`、`meson.build`。`tools/sync-port.ps1` 把它镜像进
+  `tools/smk/src/keyboards/yd-y65s`（SMK 本身不入库）。
+* 键位表由 `analysis/gen_smk_layout.py` 直接从 dump 生成，四层按
+  `_WIN_BL=0 / _MAC_BL=1 / _WIN_FL=2 / _MAC_FL=3` 排列；SMK 默认层 0 即 Windows 基础层。
+  Fn 键对应 `MO(_WIN_FL)`，Mac 基础层对应 `MO(_MAC_FL)`。
+* 尚缺：逐键 RGB 拓扑（`user_matrix_sinks_off` 目前为空）、无线模块、厂商 8 个 HID collection。
+  Fn 层的 `0x08` LED 动作与 SMK 无法表达的多修饰组合键生成 `KC_NO /* ... */` 注释，便于后续补齐。
+* USB 身份暂用 SMK 默认 `258a:dead`（板级 `options` 未覆盖），便于与厂商固件区分；
+  需要沿用 `258A:019D` 时再改 `meson.build`。
+* 构建（2026-10-19 验证）：SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 /
+  sinowisp 2.1.0。CSEG ≈ 13.7 KiB + CONST ≈ 1.2 KiB，远小于 60 KiB 应用区；
+  ISP 跳转桩 `75 F0 A5 74 5A 02 FF 00` 出现在 `0x2811`（`_isp_jump` @ `0x280F`）。
+* SDCC 4.6 新增 error 357（code 空间指针必须为 const），SMK 需要两处 `const` 修正；
+  `tools/patch-smk.ps1` 幂等地应用到 `tools/smk`。其他官方板（如 nuphy-air60）在 4.6 下仍有
+  opt 错误，因此 `build-port.ps1` 只编译 `yd-y65s_default_smk.hex` 目标。
+* 仍**未**向设备写入任何数据。
 
 ## 致谢
 
