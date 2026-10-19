@@ -158,13 +158,40 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
   * 链路状态 `xdata[0x0F29]`：`1` = USB 有线，`0x25/0x35/0x45/0x55` = 2.4G / BT1 / BT2 / BT3
     （写于 `0x1283/0x128F/0x129B/0x12A7`）；`xdata[0x0B8E]` = 上一档，`xdata[0x0BA7]` = 切换标志。
     四档与 SMK 的 `bk3632/rf_controller.h`（`RF_MODE_2_4G/BT1/BT2/BT3`）完全对应，但帧格式不同
-    （SMK 用 `0xAA` 魔数，本机是 `0x5A` + `01 11 xx`），SMK 的 BK3632 驱动不能直接套用。
+    （SMK 用 `0xAA` 魔数，本机收包首字节固定 `0x5A`；早期的「`01 11 xx` 帧头」说法已作废 ——
+    `01 11 C1` 是一个 XDATA 通用指针的值，不是帧头），SMK 的 BK3632 驱动不能直接套用。
   * **对自制固件的影响**：屏幕、旋钮、无线都挂在这颗模块上。不实现这条私有串口协议，
     屏幕不会有主机侧内容，2.4G/BT 与旋钮也不可用。
 * **矩阵扫描例程** @ `0x35E8` 跳转表（10 个入口，按 bank 分批扫 P6.0-P6.7 / P5.0-P5.2 / P5.7 /
   P4.0/P7.7/P4.5），扫描结果经 `0xB113` 写入 XDATA `0x0ECD`。
 * **SFR 命名** 采用 SMK 逆向出的权威表（`tools/smk/src/sino51lib/sh68f90/sh68f90.h`），
   例如 `0x97=EP0CON`、`0x9B=IEP0CNT`、`0xE1-0xE7=P0CR..P6CR`、`0xB2=CLKCON`。
+
+## 设备备份与「第二颗 SoC」的固件
+
+* 2026-10-19 用 `sinowisp read`（只读，不擦不写）读出整片 64 KiB：
+  * 键盘本体 `258a:019d` → `firmware/backups/YD-Y65S_full_20261019.bin`
+    （MD5 `3F7EE6AE90E5568FE4B9E34CC71E2135`；连读两次逐字节一致，读路径确认无擦除）。
+    与存档 `firmware/YD-Y65S_full.bin` 仅差 1 字节：`0xA44F` = 本体 `0x57` vs 存档 `0x05`，
+    落在 `0xA400-0xA47F` 这段 128 B 数据表内（被 `0x7C97`/`0x7D00-0x7D2D`/`0xD021`/`0x78A9` 等引用）；
+    两次读取稳定 ⇒ 是设备里的一个数据字节，不是读取噪声。
+  * 2.4G 接收器 `258a:0150` → `firmware/backups/dongle_258a-0150_full_20261019.bin`
+    （MD5 `38EFE2AA9E91B9A9B8A82C69E3C52DDB`）。它与模块是同一对 RF 伙伴，是目前**能拿到的最接近模块的固件样本**：
+    64 KiB、Sinowealth 8051、复位向量 `LJMP 0x27DA`、含 UTF-16LE USB 字符串（`Gaming KB`），
+    `0xF000` 起是同族 ISP bootloader（与该键盘的 bootloader 是不同构建）。
+* **模块（第二颗 SoC）自己的固件目前读不出来**，原因均有证据：
+  * Sinowealth 的 ISP bootloader **只走 USB**：反汇编 `firmware/YD-Y65S_bootloader.bin` 里
+    对 `SBUF`/`SCON` 的引用为 **0**（`fwdis.py sfr` 也显示 `SBRTH`/`SADDR`/`SADEN` 未使用），
+    因此无法把 ISP 命令经 8051 的 UART 转给模块。
+  * 8051 ↔ 模块之间只有一条普通 EUART（`SBUF=0xAA`、`SCON=0xD8`；TX `0xAF18`/`0xA3FC`、RX `0x8EF5`），
+    固件里**没有**任何「读模块 flash 并回传」的路径：主机命令通道（`xdata[0x0B91]` 起，见 [[firmware-layout]]）
+    只有状态/通知类帧与 16 B 记录透传。
+  * 结论：dump 模块固件只能在硬件层接线（模块的 ISP/SWD 焊盘 / 拆机）——用户无法拆机 ⇒ 目前受阻。
+* **同族 ODM 的主机侧协议已有完整参考**（见 [[driveall-protocol]]）：driveall 前端（`build/odm/`）里
+  命令号 80 = `SET_TFT_USER_ANIMATION`，payload = 256 B 延时表 + RGB565 小端像素流，
+  505 B/包、包头 `AA cmd idx total 50 06`、等应答 `65`；屏幕尺寸来自机型 `tftConfig`
+  （96×160 / 135×240 / 240×240 / 240×135）。该前端要求 usage page `0xFFE7`，
+  而本机厂商通道是 `0xFF02`（`258a:019d`）⇒ 不能直接用，但可用于比对固件里的主机命令通道。
 
 ## 自制固件路线
 

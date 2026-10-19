@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-19T22:33:35"
+updated: "2026-10-19T22:46:33"
 ---
 
 <!-- compiled_truth -->
@@ -85,4 +85,10 @@ updated: "2026-10-19T22:33:35"
   kind: decision
   summary: "新增关键线索：同类键盘上位机普遍支持屏幕传图(静态/GIF)且为网页驱动(WebHID)，协议可在前端 JS 中提取；新增路径 A2"
   source: "web search 2026-10-19 (yunzii.driveall.cn / hea.aulacn.com / Keydous / EWEADN)"
+  affects: [screen-customization]
+
+- time: 2026-10-19T22:46:33
+  kind: evidence
+  summary: "找到同代 ODM 的完整主机侧协议参考(见 [[driveall-protocol]]): SET_TFT_USER_ANIMATION=80 的 payload = 256 字节延时表(首字节帧数, delay*5)+RGB565 小端像素流, 505 字节/包, 头 AA cmd idx total 50 06, 等应答 65; 另有 SET_TFT_BUILT_IN_INDEX=81 与 OTA 命令 128-134。局限: 该协议走 usagePage 0xFFE7, 而 YD-Y65S 是 258a:019d/0xFF02 且不在其机型库"
+  source: build/odm/layout-classic-Bylu1MNp.js
   affects: [screen-customization]

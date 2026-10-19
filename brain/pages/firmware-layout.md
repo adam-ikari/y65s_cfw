@@ -4,7 +4,7 @@ title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T22:31:27"
+updated: "2026-10-19T22:46:33"
 ---
 
 
@@ -146,3 +146,9 @@ Python 版（`analysis/mcs51.py`）已修正。
   summary: "解码主控->模块命令帧：50 cmd len payload chk（组帧 0x9BF9，求和 0xB607）；命令码 02/03/04/08/0A/13/15/17/18/1A/1B，大 payload 通道 50 81 取自 xdata 0x08F4"
   source: "build/fw_full.lst (0x9BF9, 0xB204, 0xB607, call sites 0x009B-0x06D2)"
   affects: [screen-customization]
+
+- time: 2026-10-19T22:46:33
+  kind: evidence
+  summary: "Sinowealth ISP bootloader 只走 USB: 反汇编内无 SBUF/SCON 引用 => 第二颗 SoC(模块)的固件无法经 8051 的 UART 读出; 8051<->模块链路是硬件 EUART(SBUF=0xAA/SCON=0xD8, TX 0xAF18/0xA3FC, RX 0x8EF5)。另: 接收器 258a:0150 已 dump 64KiB(sh68f90,MD5 38EFE2AA9E91B9A9B8A82C69E3C52DDB), 键盘两次读取逐字节一致(MD5 3F7EE6AE...), 与存档 dump 仅差 1 字节(0xA44F: 0x57 vs 0x05, 位于 0xA400..0xA47F 数据表内)"
+  source: "build/fw_full.lst + firmware/backups/"
+  affects: [firmware-layout]
