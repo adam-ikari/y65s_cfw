@@ -2,7 +2,7 @@
 slug: roadmap
 title: Roadmap
 role: milestones
-updated: "2026-10-19T19:52:18"
+updated: "2026-10-19T20:59:43"
 ---
 
 # Roadmap
@@ -24,8 +24,7 @@ gantt
   Windows 构建环境 (SDCC + meson + ninja)  :done, c1, 2026-10-19, 1d
   yd-y65s 板级目录 + 首次 hex 构建          :done, c2, after c1, 1d
   仿真验证 (ucsim-sh68f90)                 :done, c3, after c2, 1d
-  section 进行中
-  厂商动作类语义解码 (class 0x07/0x08)      :active, c6, 2026-10-20, 3d
+  厂商动作类语义解码 (class 0x07/0x08)      :done, c6, after c3, 1d
   section 待开始
   物理核对 LED 走线 (原理图 / 台架)         :crit, c7, after c6, 2d
   写入验证 (需用户明确许可)                :crit, c4, after c7, 1d
@@ -46,11 +45,20 @@ gantt
   → `build/smk-yd-y65s/yd-y65s_default_smk.hex`（CSEG ≈13.7 KiB + CONST ≈1.2 KiB）；
   补丁版 uCsim 0.8.15 下 29 项测试全绿，含真实 `isp_jump()` 握手与 YD-Y65S 键位核验。
   细节见页面 `smk-port`。
-* **进行中**：厂商动作类语义解码——class `0x07` 的 6 个私有子码（`0x01/05/06/07/08/0A`，
-  落在左下 Alt/Cmd 与 Z/X/C/V/G 上）与 class `0x08` 的 8 个 LED 动作（落在 Space/Del/
-  PgUp/PgDn/方向键上）。子码全集已枚举，但消费点（flash 键位表 → 运行时代码）尚未找到。
+* **厂商动作类语义已解码（2026-10-20）**：找到了键位表真正的消费链——读取器 `0x748F`
+  （地址 = `base(S)+0x200*mode+4*idx`）→ 记录副本 `xdata 0x0B91..0x0B94` → 两个 class 派发器
+  `0x27B4`（主，按键事件）/ `0x25D5`（副，键位改写路径），逐键选择子数组为
+  `xdata 0x0B0F+21*row+col`。**class `0x07`** = 厂商组合键/模式动作（子码在 `byte3`，`0x0D` 是 Fn）；
+  **class `0x08`** = **LED/背光控制指令**（动作号在 `byte1`、参数在 `byte2`），8 条记录与副派发
+  `0x55CF` 的跳转表 `0x55F4` 逐条对上（Del=预设、PgUp/PgDn、Up/Down 与 Left/Right 为同轴 ±、
+  Space=开关）。LED 引擎变量/表也确认到一级：`xdata 0x0F65` 灯效索引、`xdata 0x0CA1` 预设号
+  经 code 表 `0xD119` 映射、`xdata 0x0CA0` 状态机由 4 分频定时中断 `0x62E0` 驱动。
+* **静态分析陷阱**：`analysis/fwdis.py` 的"可达性"输出存在大片 gap（如 `0x27B4..0x2AED`、
+  `0x9355..0x9A02`），"全固件找不到 X"类结论必须用 `--start 0 --len 0xF000` 的全量线性反汇编复核。
 * **阻塞**：PWM 通道 ↔ 物理走线（原理图或台架测量才能定）；无线模块（若确为 BK3632）。
 * **红线**：写入验证必须等用户明确许可（见 `no-write-policy`）。
 * **待证**：仿真只覆盖 MCU 模型 + 测试侧矩阵，未覆盖真实 RGB/RF 硬件与供电差异；
   物理键盘的"从左到右"朝向未做按键核对（但厂商与移植版用同一 `列序→引脚` 映射与同一按序号
-  索引的键位表，同一物理按键在两者中解析为同一键位，因此不影响正确性）。
+  索引的键位表，同一物理按键在两者中解析为同一键位，因此不影响正确性）；
+  `class 0x01/0x02`（`RAM_0x78` / `RAM_0x57,0x58`）的目标语义、`xdata 0x0B8F` 的含义、
+  `xdata 0x0BA6`/`0x0B8D` 的最终消费者仍未定位。
