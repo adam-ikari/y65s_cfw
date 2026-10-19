@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T19:52:54"
+updated: "2026-10-19T23:09:56"
 ---
 
 
@@ -114,3 +114,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   summary: "矩阵几何风险消除（三处互证）；剩余风险改为 PWM 走线未定 + RGB 未实现（Fn 层 16 格 KC_NO）"
   source: "fwdis.py dis 0x3590-0x37E0/0xB108-0xB148 + 0x0A90"
   affects: [custom-firmware-path]
+
+- time: 2026-10-19T23:09:56
+  kind: decision
+  summary: "新增判定：自制固件不可能做在屏幕模组(第二颗 SoC)上(固件不可读/型号未知/无烧写通道)；SMK 主控固件才是唯一落点，且应在其中实现主控<->模块 UART 链路(0x50 帧 + 0x81 大块转发)与 feature 9 接收，见 module-link"
+  source: build/fw_full.lst
+  affects: [custom-firmware-path, module-link, screen-customization]

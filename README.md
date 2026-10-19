@@ -198,17 +198,81 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 * 键盘 IF1 的厂商命令通道是 **col07 = `usagePage 0xff02` / `usage 0x0002`**：
   **Input report 9 = 7 字节**（总共 8 B），**Feature report 9 = 519 字节**（总共 520 B）。
   另有 col03 = `0xff02/0x0001`（4 B input，无 feature）。
-* 固件侧 EP0 分发（全线性反汇编）：`xdata[0x1150]` = 当前 **bRequest**，`xdata[0x0011]` = report ID、
-  `xdata[0x0012..]` = payload（经指针变量 `xdata[0x0ECF:0x0ED0]` 访问）。bRequest 9（SET_REPORT）时若
-  `[0x0011]==5 && [0x0012]==0x75` 就 `LJMP 0xB0ED` —— **这就是 sinowisp 进 ISP 的真实路径**。
+* **IF1 里没有任何 Output report**（描述符：col01/02/03/04/07 是 input，col05/06/09 是 feature）
+  ⇒ 主机只能用 `SetFeature`/`GetFeature`（EP0 控制传输）跟厂商固件讲话，driveall 那种 `sendReport` 前端
+  从原理上就用不了本机。
+* SETUP 包暂存区在 `xdata 0x1147..0x114E`：`0x1149` = wValue **低**字节（= **report ID**）、
+  `0x114A` = wValue 高字节（`0x03` = Feature）、`0x114B/0x114C` = wIndex（`0x0001` = IF1）、
+  `0x114D/0x114E` = wLength 低/高。`xdata[0x1150]` = EP0 状态（SETUP 时存 bRequest，多包传输中被改写成子状态）。
+  描述符服务 `0x1575..0x1889` 就是按 `xdata[0x114A]`（描述符类型 1/2/3）选 flash 地址的 ⇒ 这个布局可反证。
+* **EP0 OUT 数据缓冲 = `xdata 0x1100`，第 0 字节是 report ID**：ISP 入口即 `SetFeature(report 5)`，
+  固件在 `0x82C7` 把指针设为 `0x1100` 后判 `xdata[0x1100]==0x05 && xdata[0x1101]==0x75` → `LJMP 0xB0ED`
+  —— **这就是 sinowisp 进 ISP 的真实路径**。（旧记录里的 `xdata[0x0011]`/`[0x0012]` 是地址笔误。）
 * `xdata[0x0F83:0x0F84]` 是**代码空间(flash)读指针**：`0xA78E` 从 flash 拷 8 B 到 `xdata[0x1108]` 再喂给 EP0；
   描述符服务（`0x1575..0x1889`）与 EP0 数据泵（`0x9771..0x97F8`）都用它 ⇒ 主机可经此通道读 flash。
-* `xdata[0x0B08..0x0B0B]` 是两个 16 位计数器，界限 `0x0208 = 520` ⇒ 一个 **520 字节环形缓冲**
-  （`BITS_54` = 有待发数据，入队例程 `0x6CA2`）。
-* 实测（只读）：`get_feature(9)` 返回的是 **USB 描述符暂存区**内容 ⇒ feature 9 与 EP0 暂存区共用
-  `xdata 0x1100` 起同一块内存；空闲 12 s 内 input report 9 无任何帧（不是周期上报）。
+* 实测（只读）：`get_feature(9)` 返回的是 **USB 描述符暂存区**内容 ⇒ feature 9 与描述符服务共用
+  `xdata 0x1100` 起同一块内存（空闲时那里是描述符残留）；空闲 12 s 内 input report 9 无任何帧（不是周期上报）。
 * 探测工具：`uv run tools/vendorhid.py list|desc|get|set|watch --vid 258a --pid 019d --page ff02 --usage 2`
   （纯 stdlib + ctypes；代码内硬性拒绝触碰 report 5/6 与键鼠集合）。
+
+## 模块（屏幕 / 无线 SoC）链路：主机 → 模块 的内容管道
+
+`0x50` / `0x5A` 帧的收发引擎（全线性反汇编，`build/fw_full.lst`）：
+
+* 发送端是**带中断的分包发送**：帧缓冲 `xdata 0x11C1`；流描述符 `xdata[0x0F5C]` = 空间选择（1 = xdata）、
+  `xdata[0x0F5D:0x0F5E]` = 数据指针、`xdata[0x0F5F:0x0F60]` = 剩余字节数。每发一字节（`0xA3D3`）
+  指针 +1 / 计数 −1，UART TX 中断续发。UART 初始化在 `0xB15A..0xB187`：`SCON=0x50`、`SBRTH=0xFF`、
+  `SBRTL=0xFB`、`SFINE=0x0C`、开 UART 中断（`IEN1` bit6）。
+* 组帧 `0x9BF9`：`50 <cmd> <len> <payload...> <sum>`（`0xB607` = 8 位累加和）。
+* **主控→模块命令全集**（`0x9BF9` 全部 12 个调用点 + `0xB204` 唯一的调用点）：
+
+  | cmd | len | 发送点 | 备注 |
+  |---|---|---|---|
+  | `0x0A` | 14 | `0x009B` | payload 最大的一帧 |
+  | `0x1B` | 1 | `0x00E1` | |
+  | `0x08` | 1 | `0x011E` | |
+  | `0x02` | 1 | `0x01DE` | payload 先 `ORL A,#0x80` |
+  | `0x03` | 0 | `0x021A` | |
+  | `0x04` | 4 | `0x02A2` | |
+  | `0x13` | 1 | `0x0300` | payload 先 `ORL A,#0x08` |
+  | `0x15` | 2 | `0x035D`、`0x05F1` | |
+  | `0x17` | 1 | `0x044F` | payload 先 `ORL A,#0x80` |
+  | `0x18` | 1 | `0x0691` | |
+  | `0x1A` | 1 | `0x06D2` | |
+  | `0x81` | **520** | `0xB204`（唯一调用 `0x063A`） | 大块数据帧 |
+
+* **大块帧** = `50 81 <size_hi> <size_lo>` + 520 B：帧头写在 `xdata 0x08F1..0x08F4`，
+  payload 缓冲 `xdata 0x08F5..0x0AFC`（恰好 520 B），`0xB204` 组好帧后一次性交给发送引擎。
+
+**主机怎么把数据灌进这 520 B（这就是"屏幕内容上传"的那条管道）**：
+
+1. 主机对 IF1 写 `SetFeature(report 9)`（`wLength=519`）⇒ 固件 `0x8363` 判 SETUP 字段：
+   `wValue 低=9`（report ID）、`wValue 高=3`（Feature）、`wIndex 低=1`（IF1）⇒ 置 EP0 状态 `0x1150=0x0B`、
+   偏移 `xdata[0x0B08:0x0B09]=0`、把**剩余长度 = wLength** 写入 `xdata[0x0B0A:0x0B0B]`。
+2. 随后每个 **8 字节 EP0 OUT 包**（EP0 `mps=8`，见设备描述符）从 `xdata 0x1100` 起，
+   由 `0x6CA2` → `0xA650` **追加到 `0x08F5 + 偏移`**，同时剩余长度 −8、偏移 +8。
+3. 剩余长度归零即收尾（清 EP0 状态、`xdata[0x0F8A]=0`），再由模块链路状态机（timer 2 驱动）把整块以
+   `50 81 02 08` + 520 B 发给模块。
+   ⇒ **一次 519 B 的 feature 9 写入 ≈ 一个 520 B 的模块数据块，一一对应**，且**不需要改任何固件**。
+   （细节待实测确认：EP0 缓冲第 0 字节是 report ID，所以 519 B 报告对应 520 B 块；偏移与尾巴多包的对齐
+   目前按上面的解码成立，尚未实机验证。）
+* 反方向：input report 9（7 B）是「模块 → 主机」的通知帧；`GetFeature(9)` 读的是同一块 EP0 暂存区。
+* **模块固件既读不到也写不了**：模块命令集里没有任何擦除 / 写入 / 进 bootloader 的命令，唯一的批量通道就是
+  上面这块 520 B 数据帧；8051 侧也不存在「读 flash 回传」的路径 ⇒ 想碰模块 flash 只能硬件接线。
+
+### 「给屏幕 SoC 做自制固件、支持装应用」可行性判定（2026-10-19）
+
+* **不可行**：给模组（第二颗 SoC）换自制固件。三条互相独立的硬阻碍：
+  1. 固件**读不出**（软件通道不存在，见上）；
+  2. 芯片**型号未知**（用户无法拆机）⇒ 没有 SDK / 工具链 / 引脚与显存接口定义；
+  3. 就算写出来也**没有烧写通道**。
+* **可行**：把"应用"跑在**主控 / PC 侧**，把模组当"显示 + 无线外设"来驱动。两条落地路线：
+  * 路线 1（零刷写、风险最低）：**PC 端上位机**用 feature report 9 往 520 B 块管道里喂内容/命令。
+    通道已解码，缺的只是"块内语义"。
+  * 路线 2（真正的自制固件）：在 **SMK 移植的主控固件**里实现同一套链路（UART 帧引擎 + feature 9 接收 +
+    `0x81` 转发），应用逻辑放主控/HID 侧。这是唯一可能实现的"自制固件 + 装应用"形态。
+* **还差的一步**：520 B 块在模组端被当成什么（屏幕图像？灯效参数？字库？）。这需要一次受控写入探测
+  （只写 HID feature，不碰 flash，最坏重插电即可恢复），建议在能看着屏幕的时候做。
 
 ## 自制固件路线
 

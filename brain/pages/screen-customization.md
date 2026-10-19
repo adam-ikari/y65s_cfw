@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-19T22:46:33"
+updated: "2026-10-19T23:09:46"
 ---
 
 <!-- compiled_truth -->
@@ -66,6 +66,26 @@ updated: "2026-10-19T22:46:33"
 - [[no-write-policy]]：任何 flash 写 / 擦除都必须有用户逐次明确授权。
 - 用户无法拆机（不能鉴定芯片），厂家已失联 —— 因此只能走“不接触硬件”的路线 A/B/C。
 
+## 可行性判定（2026-10-19，详见 [[module-link]]）
+
+用户问：**"驱动屏幕的那颗 SoC 能不能做自制固件、支持装应用？"**
+
+* **给模组（第二颗 SoC）换自制固件：不可行**（软件层面已封死，三条独立硬阻碍）：
+  1. 固件**读不出**：8051 侧没有任何"读模块 flash 回传"的路径；Sinowealth ISP bootloader 只走 USB
+     （反汇编里 `SBUF`/`SCON` 引用为 0），ISP 命令无法经 UART 转给模块；模块命令集里也没有
+     擦除/写入/进 bootloader 之类的命令。
+  2. 芯片**型号未知**：用户不能拆机 ⇒ 没有 SDK、工具链、引脚定义、显存/屏接口资料。
+  3. 即使写出来也**没有烧写通道**（模块只能硬件接线 ISP/SWD）。
+* **可行**：把"应用"跑在**主控 / PC 侧**，把模组当成"显示 + 无线外设"。关键发现是
+  [[module-link]] 里那条**主机 → 模块 的 520 B 内容管道**：主机写一次 IF1 的
+  `SetFeature(feature report 9, 519 B)`，固件就把它整块以 `50 81 02 08` + 520 B 转发给模块
+  —— **这条通道不需要改任何固件**，只缺"块内语义"。
+  * 路线 1（零刷写、风险最低）：**PC 端上位机**用它往模块灌内容/命令。
+  * 路线 2（真正的自制固件）：在 **SMK 移植的主控固件**里实现同一套链路（UART 帧引擎 + feature 9 接收
+    + `0x81` 转发）。这是唯一可能实现的"自制固件 + 装应用"形态：应用逻辑在主控/HID 侧，模组被驱动。
+* 下一步只差一件事：**520 B 块在模块端是什么**（屏幕图像 / 灯效参数 / 字库）。需要一次受控写入探测
+  （只写 HID feature，不碰 flash，最坏重插电恢复），最好在能看着屏幕时做。
+
 
 ## Timeline
 
@@ -91,4 +111,10 @@ updated: "2026-10-19T22:46:33"
   kind: evidence
   summary: "找到同代 ODM 的完整主机侧协议参考(见 [[driveall-protocol]]): SET_TFT_USER_ANIMATION=80 的 payload = 256 字节延时表(首字节帧数, delay*5)+RGB565 小端像素流, 505 字节/包, 头 AA cmd idx total 50 06, 等应答 65; 另有 SET_TFT_BUILT_IN_INDEX=81 与 OTA 命令 128-134。局限: 该协议走 usagePage 0xFFE7, 而 YD-Y65S 是 258a:019d/0xFF02 且不在其机型库"
   source: build/odm/layout-classic-Bylu1MNp.js
+  affects: [screen-customization]
+
+- time: 2026-10-19T23:09:46
+  kind: decision
+  summary: "在原有内容后追加『可行性判定(2026-10-19)』：给模组换自制固件不可行(读不到/型号未知/无烧写通道)；可行的是把应用跑在主控/PC 侧，走 feature 9 -> 520B -> 模块 的内容管道；下一步需实测 520B 块语义"
+  source: "build/fw_full.lst + README 模块链路节"
   affects: [screen-customization]
