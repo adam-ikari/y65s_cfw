@@ -138,6 +138,29 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
   `PERD=0xB0`（初值均匀，不携带走线信息）。效果渲染在 `0xD11` 起，索引的是抽象缓冲
   （code `0x9983` → XDATA `0x08F5` 共 128 B），并维护计数器 `0x0EB2/0x0EB3`；
   因此**每路 PWM ↔ 物理列/灯的对应关系仍未确定**，需要原理图或台架测量。
+* **板上还有第二颗 SoC（无线 + 彩色小屏 + 旋钮），与主控之间是一条私有 UART** ——
+  **小屏不是 8051 驱动的**：`fwdis.py sfr` / `xdata` 全量枚举显示，主控实际用到的外设只有
+  4 组 PWM bank（LED）、UART、USB 与 GPIO，**没有** LCD 控制器 / SPI / I2C，flash 里也没有
+  字模或点阵数据（`0x0700-0x0BFF` 是 PWM/曲线查表）。串口细节：
+  * 初始化 `0xB169`（`SBRTH=0xFF, SBRTL=0xFB, SFINE=0x0C, SCON=0x50`）；
+    接收中断 `0x8EF2`（RI → `xdata[0x0ECE]=SBUF`）；发送 `0xA3FC` / `0xAF18`（`MOV SBUF,A`）。
+  * 收包缓冲 `xdata 0x1130..0x1143`（≤20 B，`xdata 0x0F56` 为收包索引，
+    上限 `0x14`），首字节须为 **`0x5A`**（`0xAF25`），`xdata[0x0F61]=1` 表示收齐；
+    处理 `0xAF1B` → `0xB4FC`（只认 `xdata[0x1131]` = `0xAC`/`0xFE`，其余走 `0xB73C`）。
+  * **发送原语** = "从 XDATA 通用指针发 N 字节"：`xdata 0x0F5C..0x0F5E` 是 3 字节**通用指针**
+    `{memtype=1, hi, lo}`、`xdata 0x0F5F:0x0F60` 是待发字节数，`0xA3DB` 逐字节 `MOV SBUF,A`。
+    （注意：`01 11 C1` 是**指针值**，不是帧头。）已知发送源：`xdata 0x11C1`
+    （首字节 `0x50`，见 `0x9C09`；负载在 `0x11C4..`）、`xdata 0x0C2D+16*n`
+    （见下）、`xdata 0x11E0`。`P4.1` 是链路唤醒/握手脚。
+  * **主机 ↔ 模块经 8051 透传**：`xdata 0x0C2D+16*n`（队列深 5，每记录带 8 位补码校验和，
+    校验例程 `0xB4CC`）这组消息记录**会被原样发到模块**（发送点 `0x689F`）。即 PC 端驱动
+    把命令经 HID/EP0 交给 8051，8051 转发给模块；模块用 `0x5A` 开头的帧回状态。
+  * 链路状态 `xdata[0x0F29]`：`1` = USB 有线，`0x25/0x35/0x45/0x55` = 2.4G / BT1 / BT2 / BT3
+    （写于 `0x1283/0x128F/0x129B/0x12A7`）；`xdata[0x0B8E]` = 上一档，`xdata[0x0BA7]` = 切换标志。
+    四档与 SMK 的 `bk3632/rf_controller.h`（`RF_MODE_2_4G/BT1/BT2/BT3`）完全对应，但帧格式不同
+    （SMK 用 `0xAA` 魔数，本机是 `0x5A` + `01 11 xx`），SMK 的 BK3632 驱动不能直接套用。
+  * **对自制固件的影响**：屏幕、旋钮、无线都挂在这颗模块上。不实现这条私有串口协议，
+    屏幕不会有主机侧内容，2.4G/BT 与旋钮也不可用。
 * **矩阵扫描例程** @ `0x35E8` 跳转表（10 个入口，按 bank 分批扫 P6.0-P6.7 / P5.0-P5.2 / P5.7 /
   P4.0/P7.7/P4.5），扫描结果经 `0xB113` 写入 XDATA `0x0ECD`。
 * **SFR 命名** 采用 SMK 逆向出的权威表（`tools/smk/src/sino51lib/sh68f90/sh68f90.h`），

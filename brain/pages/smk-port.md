@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [smk, port, build, sdcc]
 created: "2026-10-19T19:07:35"
-updated: "2026-10-19T21:02:03"
+updated: "2026-10-19T22:20:04"
 ---
 
 <!-- compiled_truth -->
@@ -155,3 +155,9 @@ class `0x08`（LED 控制指令：动作号 = `byte1`、参数 = `byte2`）与�
   summary: "确认 class 0x08 是 LED/背光控制指令（动作号 byte1、参数 byte2），8 条记录与副派发 0x55CF 跳转表逐条对上；移植端仍映射为 KC_NO + 原始字节注释，因为 SMK 的灯效由自身 RGB 层管理；剩余未解的是 PWM 通道↔物理灯"
   source: "brain/pages/matrix-and-keymap.md + analysis/gen_smk_layout.py"
   affects: [smk-port matrix-and-keymap]
+
+- time: 2026-10-19T22:20:04
+  kind: decision
+  summary: "板上有第二颗 SoC（无线+小屏+旋钮），屏幕不是 8051 驱动的；主控与它只靠一条私有 UART（魔数 0x5A + 帧头 01 11 xx，收包缓冲 xdata 0x1130，链路状态 xdata 0x0F29 = 1/USB 与 0x25/0x35/0x45/0x55 = 2.4G/BT1/BT2/BT3）。移植不做这条协议则屏幕无主机侧内容、2.4G/BT 与旋钮不可用。细节见 firmware-layout。"
+  source: "fwdis.py sfr/xdata + fw_full.lst (0x8EF2/0xA3FC/0xAF1B/0x1283)"
+  affects: [smk-port]

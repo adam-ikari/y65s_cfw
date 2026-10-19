@@ -4,7 +4,7 @@ title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T17:50:04"
+updated: "2026-10-19T22:31:27"
 ---
 
 
@@ -66,6 +66,42 @@ bootloader 的 MD5 与社区已知的 `3e0ebd0c` 完全一致，说明平台判�
 | `0xB108/0xB10C/0xB113` | 扫描结果写入 XDATA `0x0ECD` 的辅助例程 |
 | `0xBC00-0xCC00` | 键位/配置表（4 字节记录，列优先，含 `00 00 00 29`=Esc 之类） |
 
+## 第二颗 SoC：主控 ↔ 模块的私有串口（屏幕 / 无线）
+
+**主控只做三件事**：扫矩阵、USB HID、驱动 LED。**小屏上的内容是模块自己画的，不是 8051 画的。**
+
+主控没有任何显示外设（`fwdis.py sfr` 与 `xdata` 全量枚举，均无遗漏）：
+
+* 实际访问到的外设只有 4 组 PWM bank（`PWM00CON..PWM33DUTY2H`，各 6 通道）、UART、USB 和 GPIO。
+* **不存在** LCD 控制器、SPI、I2C 寄存器（`SFR_NAMES`/`XSFR_NAMES` 全表已枚举）。
+* flash 内没有字模/点阵/位图数据（`0x0700-0x0BFF` 是 PWM/曲线查表数据，`0x7D82` 是版本串）。
+* 除 UART 外没有任何"软件翻转引脚"的串行总线（点屏用的 SPI 必然要软件翻转 SCL/SDA）。
+
+固件里唯一的外设间串口：
+
+| 项 | 位置 |
+|---|---|
+| 初始化 | `0xB169-0xB17F`：`SBRTH=0xFF`、`SBRTL=0xFB`、`SFINE=0x0C`、`SCON=0x50`（mode1 + REN） |
+| 接收中断 | `0x8EF2`（`SCON.0`/RI 分支；`0x9E6C` `LCALL 0x8EF2`），取 `SBUF` → `xdata[0x0ECE]` |
+| 发送 | `0xA3FC` / `0xAF18`：`MOV SBUF,A`，字节从 `xdata 0x0F57..` 环形区取 |
+| 发送帧头 | `01 11 xx`（`0xA30D` 写 `0xC1`；`0xB1E7` 写 `0xE0`） |
+| 接收缓冲 | `xdata 0x1130..0x113D`（≤14 B），魔数 `xdata[0x1130]==0x5A`，`xdata[0x0F61]=1` 表示收齐 |
+| 收包处理 | `0xAF1B` → `0xB4FC`：只认 `xdata[0x1131]` = `0xAC`（写 `xdata[0x0F18]`）/ `0xFE`（写 `xdata[0x1155]`） |
+| 状态变量 | `0x0F55`/`0x0F56`/`0x0F57..0x0F61`（收发指针与计数/标志） |
+| 硬件连线 | `P4.1` 反复 `ORL P4CR,#02` + `CLR P4.1` 再 `ANL P4CR,#FD`（切输出拉低再切回输入）= 链路唤醒/握手脚；`P0.5` 是使能该链路的跳线（`JB P0.5`，`0x8EF8`/`0xAF40`） |
+
+链路状态 `xdata[0x0F29]`：
+
+* `1` = USB 有线；`0x25`/`0x35`/`0x45`/`0x55` = 2.4G / BT1 / BT2 / BT3（4 个无线档，写于 `0x1283`/`0x128F`/`0x129B`/`0x12A7`）。
+* `xdata[0x0B8E]` = 上一档；`xdata[0x0BA7]` = 切换标志；切换入口 `0x116E`/`0x1265`/`0x127B`。
+* 与 SMK 的 `src/peripherals/bk3632/rf_controller.h`（`RF_MODE_2_4G/BT1/BT2/BT3`）**四档一一对应**，
+  但帧格式不同：SMK 用 `0xAA` 魔数，本机是 `0x5A` 魔数 + `01 11 xx` 帧头。故 SMK 的 BK3632
+  驱动不能直接套用，需要按本机协议改写。
+
+**结论（后两条为推断）**：YD-Y65S = 主控 SH68F90A + 第二颗 SoC（无线 + 彩色小屏 + 旋钮），两者只靠这条
+UART 交换短报文（连接状态、HID 报告、灯效、模式切换）。因此 **屏幕不是 8051 驱动的**；自制固件若不说
+这条私有串口协议，屏幕不会有主机侧内容、旋钮与 2.4G/BT 也不能用。
+
 ## 熵与空区
 
 * `0xD222-0xEFFF` 共 7646 字节全 `0x00`（未使用）。
@@ -98,3 +134,15 @@ Python 版（`analysis/mcs51.py`）已修正。
   summary: "确认矩阵引脚(15列/5行)与 0xBC00-0xCC00 四层键位表格式，LED 为内置 PWM bank 直驱；细节见 matrix-and-keymap"
   source: "analysis/keymap.py + fwdis.py"
   affects: [firmware-layout, matrix-and-keymap]
+
+- time: 2026-10-19T22:19:43
+  kind: decision
+  summary: Rewrote compiled_truth to the new best understanding
+  source: brain update-truth
+  affects: [firmware-layout]
+
+- time: 2026-10-19T22:31:27
+  kind: evidence
+  summary: "解码主控->模块命令帧：50 cmd len payload chk（组帧 0x9BF9，求和 0xB607）；命令码 02/03/04/08/0A/13/15/17/18/1A/1B，大 payload 通道 50 81 取自 xdata 0x08F4"
+  source: "build/fw_full.lst (0x9BF9, 0xB204, 0xB607, call sites 0x009B-0x06D2)"
+  affects: [screen-customization]
