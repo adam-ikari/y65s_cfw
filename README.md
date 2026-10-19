@@ -87,9 +87,14 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 * **ISP 命令分发** @ `0x82EA`：EP0 OUT 收到 `05 75` 后跳到上述跳转桩。
 * **USB 描述符** 原样存在于固件中：设备描述符 @ `0x4699`，IF0 报告描述符 @ `0x4526`（67 B），
   IF1 报告描述符 @ `0x4569`（304 B）。字符串：`YD-Y65S` / `SINO WEALTH` / `0001` / `BY Tech`。
-* **矩阵引脚**（与 SMK `nuphy-air60/kbdef.h` 同芯片交叉验证）：列引脚
+* **矩阵引脚**（已确认，三处独立互证）：列引脚
   `P6.0-P6.7`, `P5.0-P5.2`, `P5.7`, `P4.0`, `P7.7`, `P4.5`（共 15 路，扫描时逐列推挽拉低）；
   行引脚 `P7.1`, `P7.2`, `P7.3`, `P5.3`, `P5.4`（共 5 路，读取时由 `0xB130` 打包进 `ACC` 位 1..5）。
+  三处证据：① 扫描派发 `0x35E8`（10 入口跳转表）的每个处理块按固定次序 `CLR Px.y` 驱动一列，
+  结果依次落进 `RAM_2C..RAM_3A`，这个次序就是上面的列序（第二遍写 `RAM_41..RAM_4F` 作上次状态，
+  `RAM_2C ^ RAM_41` 可交叉验证）；② 行读取 `0xB130` 的 `CPL A` 使 `R7` bit0 恒 0、
+  bit(1+k) = 物理行 k——这也是每列 slot0 空置的原因；③ 扫描序表 `0x0A90`（90 B，`col*8+slot`，
+  未用槽 `0xFF`）。
   端口方向由 `0x94A3-0x9535` 的 `P6CR=0xFF` / `P5CR=0x87` / `P7CR=0xF0` / `P4CR=0xB1` 设定，
   即 `MATRIX_ROWS 5`、`MATRIX_COLS 15`。
 * **键位表** 位于 `0xBC00-0xCC00`（低熵区），4 层 × `0x200` 字节，每层 90 条 4 字节记录、
@@ -104,12 +109,16 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 
   记录格式 `[class, mod, hi, usage]`：`0x00` 键盘（HID usage 在 `usage`，修饰位掩码在 `mod`，
   也用于 `00 10 00 52`=RCtrl+Up 这类组合键）；`0x02` consumer（16 位 usage `hi:usage`，
-  如 `0x00EA`=音量减）；`0x07` 层/厂商动作（基础层 `0x07 00 00 0D` 即 Fn 键）；`0x08` LED/背光控制
-  （`08 FF 00 00` 等）；`0x0D` 未分配。层序与 SMK 的 `_MAC_BL/_WIN_BL/_MAC_FL/_WIN_FL` 一致：
+  如 `0x00EA`=音量减）；`0x07` 厂商动作（**不止 Fn**：基础层 `07 00 00 0D` 是 Fn 键，Fn 层另有
+  `0x01/0x05/0x06/0x07/0x08/0x0A` 六个私有动作，落在左下 Alt/Cmd 与 Z/X/C/V/G 上，语义待定）；
+  `0x08` LED/背光动作（8 个子码，落在 Space/Del/PgUp/PgDn/方向键上：`01`/`02` 成对出现在同一轴上，
+  形如"同轴加/减"）；`0x0D` 未分配。层序与 SMK 的 `_MAC_BL/_WIN_BL/_MAC_FL/_WIN_FL` 一致：
   mac/win 基础层仅 3 格不同（Alt/Gui 互换），mac/win Fn 层仅 12 格不同（F1-F12 vs 媒体/亮度）。
-* **LED 由芯片内置 PWM bank 直驱**（无外置驱动 IC）：`0x48BE-0x48FD` 写 `PWM00CON..PWM30CON`，
-  `0x46F9-0x48AB` 把 `PWMxxDUTY1L/H` / `DUTY2L/H` 设为 `0xB0`、`PERD=0xB0`，共 15-16 通道
-  （约每列一路亮度），对应 SMK 的 `LED_PWM_C0..C15`。
+* **LED 由芯片内置 PWM bank 直驱**（无外置驱动 IC）：`0x48BE-0x48FD` 写 `PWM00CON..PWM30CON`
+  （4 bank × 6 通道 = 24 路），`0x46F9-0x48AB` 把 `PWMxxDUTY1L/H` / `DUTY2L/H` 设为 `0xB0`、
+  `PERD=0xB0`（初值均匀，不携带走线信息）。效果渲染在 `0xD11` 起，索引的是抽象缓冲
+  （code `0x9983` → XDATA `0x08F5` 共 128 B），并维护计数器 `0x0EB2/0x0EB3`；
+  因此**每路 PWM ↔ 物理列/灯的对应关系仍未确定**，需要原理图或台架测量。
 * **矩阵扫描例程** @ `0x35E8` 跳转表（10 个入口，按 bank 分批扫 P6.0-P6.7 / P5.0-P5.2 / P5.7 /
   P4.0/P7.7/P4.5），扫描结果经 `0xB113` 写入 XDATA `0x0ECD`。
 * **SFR 命名** 采用 SMK 逆向出的权威表（`tools/smk/src/sino51lib/sh68f90/sh68f90.h`），
@@ -133,8 +142,9 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
 * 键位表由 `analysis/gen_smk_layout.py` 直接从 dump 生成，四层按
   `_WIN_BL=0 / _MAC_BL=1 / _WIN_FL=2 / _MAC_FL=3` 排列；SMK 默认层 0 即 Windows 基础层。
   Fn 键对应 `MO(_WIN_FL)`，Mac 基础层对应 `MO(_MAC_FL)`。
-* 尚缺：逐键 RGB 拓扑（`user_matrix_sinks_off` 目前为空）、无线模块、厂商 8 个 HID collection。
-  Fn 层的 `0x08` LED 动作与 SMK 无法表达的多修饰组合键生成 `KC_NO /* ... */` 注释，便于后续补齐。
+* 尚缺：逐键 RGB 拓扑（走线未确定，`user_matrix_sinks_off` 目前为空）、无线模块、
+  厂商 8 个 HID collection。Fn 层落成 `KC_NO` 的共 16 格：6 个 `0x07` 私有动作 + 8 个 `0x08`
+  LED 动作 + Fn+6（`00 A0 00 21`，RShift+RGui+4）+ Fn+O（consumer `0x018A`），均带原始字节注释。
 * USB 身份暂用 SMK 默认 `258a:dead`（板级 `options` 未覆盖），便于与厂商固件区分；
   需要沿用 `258A:019D` 时再改 `meson.build`。
 * 构建（2026-10-19 验证）：SDCC 4.6.0 / meson 1.12.1 / ninja 1.13.2 / gcc 15.2.0 /

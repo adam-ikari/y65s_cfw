@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T19:38:16"
+updated: "2026-10-19T19:52:54"
 ---
 
 
@@ -29,8 +29,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
 ## 移植步骤
 
 1. ~~**确定硬件连接**：从厂商固件 `0x35E8` 的扫描跳转表 + `ports` 分析推出矩阵行列引脚，
-   并确认 LED 是 PWM bank 直驱还是外置驱动 IC。~~ **已完成**：矩阵 15 列 × 5 行、
-   键位表 4 层格式、LED 内置 PWM bank 直驱，细节见 `matrix-and-keymap`。
+   并确认 LED 是 PWM bank 直驱还是外置驱动 IC。~~ **已完成**：矩阵 15 列 × 5 行已由三处
+   独立证据互证（扫描派发引脚次序 + 行读取 `0xB130` 位打包 + 扫描序表 `0x0A90` 的
+   `col*8+slot` 编码），键位表 4 层格式、LED 内置 PWM bank 直驱，细节见 `matrix-and-keymap`。
 2. ~~**新建板级目录** `src/keyboards/yd-y65s/`。~~ **已完成（2026-10-19）**：
    `kbdef.h` / `user_matrix.c` / `user_init.c` / `kb.c` / `user_sleep.c` /
    `layouts/default/layout.c` / `meson.build` 已入库；`tools/sync-port.ps1` 把它镜像进
@@ -58,10 +59,13 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
 * 兜底方案是硬件编程器（Arduino Nano + `sinodude-serial`，或 SinoWealth SinoLink + ProWriter），
   本机目前没有。
 * 无线部分（若本机实际带 BK3632）在 SMK 中仍是 `[~]` 未完成状态。
-* 矩阵列序与 PWM 通道↔物理列的对应尚为推断，移植前应尽量用按键/台架核对。
+* **PWM 通道 ↔ 物理 LED 走线的对应关系仍未确定**：厂商把 `PWMxxDUTY` 初值一律设为 `0xB0`、
+  `PERD=0xB0`（均匀），效果引擎索引的是抽象缓冲，静态无法反推走线；需要原理图或台架测量。
+  （矩阵的列序→引脚映射已从厂商代码验证，不再是风险。）
 * 仿真只覆盖 MCU 模型 + 测试侧的矩阵，未覆盖真实 RGB/RF 硬件、供电与 USB 主机的差异。
-* 逐键 RGB 拓扑尚未解析：当前 `user_matrix_sinks_off` 为空、未定义 `led_cols`；
-  Fn 层的 `0x08` LED 动作与 SMK 无法表达的多修饰组合键暂以 `KC_NO /* ... */` 保留。
+* 逐键 RGB 尚未实现：当前 `user_matrix_sinks_off` 为空、未定义 `led_cols`；Fn 层共 16 格
+  落成 `KC_NO /* ... */`（6 个 class `0x07` 私有动作、8 个 class `0x08` LED 动作、
+  Fn+6 的多修饰组合、Fn+O 的 consumer `0x018A`）。
 * 未接入厂商的 8 个 HID collection；SMK 只提供标准 keyboard / NKRO / consumer 等。
 
 ## 为什么不是其他路线
@@ -103,4 +107,10 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   kind: decision
   summary: "第 5 步（验证）在仿真里跑通：29 项测试全绿，含真实 isp_jump 握手与 YD-Y65S 键位核验；写入设备仍需明确许可"
   source: "tools/sim-tests.sh + tests/test_y65s_sim.py"
+  affects: [custom-firmware-path]
+
+- time: 2026-10-19T19:52:54
+  kind: decision
+  summary: "矩阵几何风险消除（三处互证）；剩余风险改为 PWM 走线未定 + RGB 未实现（Fn 层 16 格 KC_NO）"
+  source: "fwdis.py dis 0x3590-0x37E0/0xB108-0xB148 + 0x0A90"
   affects: [custom-firmware-path]
