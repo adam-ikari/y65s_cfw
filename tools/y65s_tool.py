@@ -185,10 +185,13 @@ class App:
         ts = bytes([0x5A, 0x01, 0x5A, now.year % 100, now.month, now.day,
                     now.hour, now.minute, now.second, wd])
         # 厂商 contentSize=24：10 字节时间 + 14 字节 0
-        window = ts + bytes(24 - len(ts))
-        ok = self.rec_with_window(window)
+        payload = ts + bytes(24 - len(ts))
+        # 厂商 xn() 组包：AA 34 <contentSize=0x18> 00 00 00 01 00
+        packet = bytes([0xAA, 0x34, 0x18, 0x00, 0x00, 0x00, 0x01, 0x00]) + payload
+        ok = self.rec_with_window(packet)
         self.log_write(f"校时 {now:%Y-%m-%d %H:%M:%S} wd={wd} {'成功' if ok else '失败'}"
-                       f"（注意：屏幕只在时钟页才看得出来）")
+                       f"（注意：屏幕只在时钟页才看得出来；"
+                       f"若时钟没跳，用 tools/tft_probe.py clock 扫窗口布局）")
 
     def set_builtin(self) -> None:
         idx = self.idx.get() & 0xFF
