@@ -4,7 +4,7 @@ title: "写入禁令 (No-Write Policy)"
 category: decision
 status: active
 created: "2026-10-19T16:46:16"
-updated: "2026-10-19T16:47:21"
+updated: "2026-10-20T13:14:54"
 ---
 
 <!-- compiled_truth -->
@@ -50,3 +50,9 @@ updated: "2026-10-19T16:47:21"
   summary: "\""
   source: brain update-truth
   affects: [no-write-policy]
+
+- time: 2026-10-20T13:14:54
+  kind: decision
+  summary: "2026-10-20 事故机理（可复用的教训）：厂商记录 0x08 的处理器 0x6B57 会把主机窗口按 (col=[0x0EC2], row=[0x0EC1]) 拷进 xdata 0x0377 + col*18 + row*3 的 3 字节单元表（6 行），而固件会把相关位图表持久化到 flash 0xA800 起（那份区与代码表 0xAA00 图案相同，恢复前整片与 2026-10-19 备份差 457 B 就是它被改写）。因此：对真机发记录时，0x08/0x0A 这类会落到持久化配置上的记录最危险（全零记录就能把键配置写坏，症状是按键失效但 RGB/屏幕/USB 正常）；0x04/0x05 只走模块链路相对安全（但 0x81 大块帧不要塞 ODM 包，会把模块带进等待流数据状态）。任何真机实验后如出现异常，先读 flash 比对再决定动作。"
+  source: "omp-host 真机 2026-10-20 + fw_full.lst 0x6B57 复核"
+  affects: [no-write-policy, screen-customization]

@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T12:37:12"
+updated: "2026-10-20T13:14:54"
 ---
 
 <!-- compiled_truth -->
@@ -174,3 +174,9 @@ updated: "2026-10-20T12:37:12"
   summary: "2026-10-20 校时打通：ODM 前端的时间包必须 (a) 用 xn 头 AA 34 <contentSize=24> 00 00 00 01 00，(b) contentSize 取厂商默认 24（不是 10，时间只有 10 B、其余补 0），(c) 装在 520 B 大块帧里经记录 0x0B/0x0C/0x0D 下发（模块 cmd 0x81），ODM 包头落在 payload[1]。此前一直走 0x04/0x05 那两条窗（模块 cmd 0x52 / 0x6E+sub），命令号对不上，所以校时从未成功。实测：0x0C @payload[1] 下发后屏幕时钟从『慢 6 分钟』变为与宿主一致。"
   source: "omp-host 真机 2026-10-20 + build/odm/ 前端逐字节复核"
   affects: [screen-customization, module-link, driveall-protocol]
+
+- time: 2026-10-20T13:14:54
+  kind: evidence
+  summary: "2026-10-20 校时已排除的组合（真机，屏幕时间未变）：记录 0x04 @payload[7] 的 raw/odm(AA 34 18 头)/dotmatrix(首字节 3A)/cmdprefix(34 前缀) 四种、记录 0x05 sub=0 的 raw/odm、记录 0x03 sub=1 的 raw/odm，全部无效；模块时钟只是自由走时（实测屏上 20:55 对宿主 20:51、快约 4~6 分钟，与旧记录『慢 6 分钟』方向相反）。尚未试：记录 0x05 的 sub=2..7（模块 cmd 0x70..0x75 = ODM 0x52..0x57，通用命令表里这档是空的=设备私有的屏幕命令族，固件开机正是拿 0x6E..0x75 逐个探测能力）——这是当前最强候选。另一条待验证路线：时间可能是 cmd 0x52 那 128 B profile 里的某个字段（需要按偏移暴力扫）。"
+  source: "omp-host 真机 2026-10-20 批量实验"
+  affects: [screen-customization, module-link]
