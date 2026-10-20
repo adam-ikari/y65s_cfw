@@ -191,6 +191,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--only", choices=sorted(LAYOUTS), action="append")
     ap.add_argument("--recipe", choices=sorted(RECIPES), action="append",
                     help="named content/channel recipes (see RECIPES)")
+    ap.add_argument("--spec", action="append",
+                    help="ad-hoc recipe 'rec:sub:pack' (e.g. 0x05:2:raw, 0x03:1:odm, "
+                         "0x04::raw); sub is the record 0x03/0x05 sub-dispatch")
     ap.add_argument("--distinct", action="store_true",
                     help="give every recipe its own time (base + index minutes) "
                          "so the screen shows which one landed")
@@ -221,17 +224,25 @@ def main(argv: list[str]) -> int:
     print()
 
     dev = Device()
-    names = a.recipe or a.only or sorted(LAYOUTS)
-    for index, name in enumerate(names):
+    jobs: list[tuple[str, int, int, int | None, int | None, str]] = []
+    for name in (a.recipe or a.only or []):
         if name in RECIPES:
             r = RECIPES[name]
-            cmd, at = r["rec"], r["at"]
-            sub, sub_at = r.get("sub"), r.get("sub_at")
-            pack = a.pack if a.pack != "odm" else r.get("pack", "odm")
+            jobs.append((name, r["rec"], r["at"], r.get("sub"), r.get("sub_at"),
+                         a.pack if a.pack != "odm" else r.get("pack", "odm")))
         else:
             cmd, at = LAYOUTS[name]
-            sub, sub_at = (0, 4) if cmd == 0x05 else (None, None)
-            pack = a.pack
+            jobs.append((name, cmd, at, (0, 4) if cmd == 0x05 else (None, None), None,
+                         a.pack))
+    for spec in a.spec or []:
+        parts = spec.split(":")
+        rec = int(parts[0], 0)
+        sub = int(parts[1], 0) if len(parts) > 1 and parts[1] else None
+        pack = parts[2] if len(parts) > 2 and parts[2] else a.pack
+        sub_at = 1 if rec == 0x03 else (4 if rec == 0x05 else None)
+        jobs.append((spec, rec, 7, sub, sub_at, pack))
+
+    for index, (name, cmd, at, sub, sub_at, pack) in enumerate(jobs):
         when = now + dt.timedelta(minutes=index) if a.distinct else now
         content = time_content(when, a.encode, a.weekday)
         packet = build_packet(pack, content, a.content_size)
@@ -242,11 +253,11 @@ def main(argv: list[str]) -> int:
         replies = dev.drain(a.pause)
         frame = replies[0] if replies else b""
         aa = frame[3] if len(frame) > 3 else None
-        print(f"{name:9s} rec 0x{cmd:02X} @payload[{at}] pack={pack:9s} "
+        print(f"{name:12s} rec 0x{cmd:02X} sub={sub} @payload[{at}] pack={pack:9s} "
               f"time={when:%H:%M:%S}  write={'ok' if ok else 'FAIL'}  "
               f"reply={' '.join(f'{b:02x}' for b in frame) if frame else '(none)'}  "
               f"module_0xAA={'YES' if aa == 1 else 'no'}")
-        print(f"          bytes: " + " ".join(f"{b:02x}" for b in packet))
+        print(f"             bytes: " + " ".join(f"{b:02x}" for b in packet))
         time.sleep(0.3)
     return 0
 
