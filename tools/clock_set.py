@@ -213,6 +213,9 @@ def main(argv: list[str]) -> int:
                                       "the range and send it via record 0x04; the "
                                       "time is base+offset minutes so the screen "
                                       "shows which offset landed")
+    ap.add_argument("--restore", action="store_true",
+                    help="send the built-in profile (flash 0x9983) unchanged via "
+                         "record 0x04 -- puts the LED/profile fields back")
     a = ap.parse_args(argv)
 
     if a.time:
@@ -229,10 +232,17 @@ def main(argv: list[str]) -> int:
     print()
 
     dev = Device()
+    fw_path = pathlib.Path(__file__).resolve().parent.parent / "firmware" / "YD-Y65S_full.bin"
+    profile = bytearray(fw_path.read_bytes()[0x9983:0x9983 + 128])
+    if a.restore:
+        ok = dev.send(record(0x04, bytes(profile), at=7))
+        replies = dev.drain(2.0)
+        print(f"restore: 内置 profile 原样下发 write={'ok' if ok else 'FAIL'} "
+              f"reply={' '.join(f'{b:02x}' for b in replies[0]) if replies else '(none)'}")
+        return 0
+
     if a.overlay:
         lo, hi = (int(x, 0) for x in a.overlay.split(":"))
-        fw = pathlib.Path(__file__).resolve().parent.parent / "firmware" / "YD-Y65S_full.bin"
-        profile = bytearray(fw.read_bytes()[0x9983:0x9983 + 128])
         for k in range(lo, hi):
             when = now + dt.timedelta(minutes=k)
             body = bytearray(profile)

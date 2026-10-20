@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T12:56:38"
+updated: "2026-10-20T15:24:14"
 ---
 
 <!-- compiled_truth -->
@@ -325,3 +325,9 @@ updated: "2026-10-20T12:56:38"
   summary: "2026-10-20 补注：上一条 reversal 的 summary 里『会??模块』两个字符是写坏的花括号，应读作『会让模块』；本条给出该句的正确表述。"
   source: brain CLI 2026-10-20
   affects: [module-link]
+
+- time: 2026-10-20T15:24:14
+  kind: evidence
+  summary: "2026-10-20 两个关键实测：(1) 记录 0x04 的 128 B 窗口(模块 cmd 0x52)【确实会被模块采纳】——把 profile 的灯效字段(偏移 0x0A/0x33)覆盖后 RGB 立刻变化/闪烁，说明 cmd 0x52 是活的『设备设置』通道，profile 尾部标记 5A A5 保留即可。(2) 厂商 OemDrv.exe 的传图时序里【Sleep 是必需的】：Sleep50 -> 0x0D SetGIFParam(flag=1,gif=0,nframes,delay) 等 ACK -> Sleep120 -> 每帧 ARGB 转 RGB565BE 后 0x0C AccessData_Page(page,seq) -> 每帧后 Sleep50 -> 末帧 0x0D(flag=0) -> Sleep500；brain 早前记的『无 Sleep 版本未被采纳』与此一致 ⇒ 任何新下发(校时/传图)都要照抄这套时序，不能连发。"
+  source: "omp-host 真机 2026-10-20 + /tmp/oemdrv.asm"
+  affects: [module-link, screen-customization]

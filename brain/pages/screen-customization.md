@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T13:14:54"
+updated: "2026-10-20T15:24:14"
 ---
 
 <!-- compiled_truth -->
@@ -180,3 +180,9 @@ updated: "2026-10-20T13:14:54"
   summary: "2026-10-20 校时已排除的组合（真机，屏幕时间未变）：记录 0x04 @payload[7] 的 raw/odm(AA 34 18 头)/dotmatrix(首字节 3A)/cmdprefix(34 前缀) 四种、记录 0x05 sub=0 的 raw/odm、记录 0x03 sub=1 的 raw/odm，全部无效；模块时钟只是自由走时（实测屏上 20:55 对宿主 20:51、快约 4~6 分钟，与旧记录『慢 6 分钟』方向相反）。尚未试：记录 0x05 的 sub=2..7（模块 cmd 0x70..0x75 = ODM 0x52..0x57，通用命令表里这档是空的=设备私有的屏幕命令族，固件开机正是拿 0x6E..0x75 逐个探测能力）——这是当前最强候选。另一条待验证路线：时间可能是 cmd 0x52 那 128 B profile 里的某个字段（需要按偏移暴力扫）。"
   source: "omp-host 真机 2026-10-20 批量实验"
   affects: [screen-customization, module-link]
+
+- time: 2026-10-20T15:24:14
+  kind: evidence
+  summary: "2026-10-20 找到本机官方厂商包：/tmp/y95drv（Y95 Keyboard Setup v2.0 安装包 + app/app/OemDrv.exe + Dev/kb/Screen/KB.ini + Text/sc/text.xml）。结论：官方驱动【没有校时功能】——UI 文本里没有『校时/时间/日期』，配置里的 SendTimeOnOpenKB / SendSysParam / SyncMask 三个键在 OemDrv.exe 里被读入对象(偏移 0x2830/0x2834)后【从未被读】(grep 全 .text 只有写没有读)，SendTimeOnOpenKB 是死配置 ⇒ 屏幕时钟是模块自己的自由走时钟(实测快约 2~3%%：20:51→20:55、23:02→23:09)，用户只能靠我们自己下发校时。KB.ini 其它事实：VID=258a PID=019D、siScreen=240,135(横屏)、MaxScreenFrame=40、RGBScreen=1、SendSysParam=2000、SyncMask=2。"
+  source: "本机 /tmp/y95drv 厂商包 + objdump 反汇编 2026-10-20"
+  affects: [screen-customization, driveall-protocol, module-link]
