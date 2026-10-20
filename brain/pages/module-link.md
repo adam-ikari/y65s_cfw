@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T12:05:14"
+updated: "2026-10-20T12:37:12"
 ---
 
 <!-- compiled_truth -->
@@ -307,3 +307,9 @@ updated: "2026-10-20T12:05:14"
   summary: "2026-10-20 自我更正：之前用 'Windows HID 实例 id(9&xxxx) 没变' 判断设备有没有重新枚举是错的 —— 该 id 按端口/接口稳定生成，重新枚举后不变；只有历史上不同枚举留下的 PHANTOM 节点才带不同的哈希。判断'是否重启过'必须看别的证据（如 GetFeature 读回的描述符缓冲内容变化、或 0603 出现）。"
   source: "2026-10-20 复核 PnP 实例 id 语义"
   affects: [module-link, host-vendor-channel]
+
+- time: 2026-10-20T12:37:12
+  kind: decision
+  summary: "2026-10-20 通道语义定案：主机侧的 ODM 风格包（时间 cmd 0x34 / TFT 0x50 / 内置图 0x51）走的是 0x81 大块帧（记录 0x0B/0x0C/0x0D），块内布局 [09 reportID][记录命令][ODM 包…]，即包头在 payload[1]；记录 0x04（128 B 窗，模块 cmd 0x52 = 设备 profile）与 0x05（512 B 窗，模块 cmd 0x6E+sub）不是 ODM 通道，别再往里面塞 ODM 包。应答帧第 4 字节=1 ⇔ 模块回过 0xAA（bulk 记录时可用作 oracle），第 5/6 字节回显 payload[3]（我们包里的 contentSize）。"
+  source: "omp-host 真机 2026-10-20"
+  affects: [module-link, screen-customization]

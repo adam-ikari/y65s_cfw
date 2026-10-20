@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T11:41:16"
+updated: "2026-10-20T12:37:12"
 ---
 
 <!-- compiled_truth -->
@@ -168,3 +168,9 @@ updated: "2026-10-20T11:41:16"
   summary: "2026-10-20 真机实验事故：19:2x-19:3x 在 Windows 宿主上对真机跑记录矩阵(0x03/0x04/0x05/0x06/0x08/0x0A 等)后，键盘失去输入能力(无法打字)；设备仍能响应 USB GetFeature(report 9)并回 8 字节状态帧，说明 MCU 的 USB ISR 还活着、卡住的是主循环/按键扫描或主机侧 USB 实例。"
   source: "omp-host 真机探测 2026-10-20"
   affects: [screen-customization, module-link, no-write-policy]
+
+- time: 2026-10-20T12:37:12
+  kind: decision
+  summary: "2026-10-20 校时打通：ODM 前端的时间包必须 (a) 用 xn 头 AA 34 <contentSize=24> 00 00 00 01 00，(b) contentSize 取厂商默认 24（不是 10，时间只有 10 B、其余补 0），(c) 装在 520 B 大块帧里经记录 0x0B/0x0C/0x0D 下发（模块 cmd 0x81），ODM 包头落在 payload[1]。此前一直走 0x04/0x05 那两条窗（模块 cmd 0x52 / 0x6E+sub），命令号对不上，所以校时从未成功。实测：0x0C @payload[1] 下发后屏幕时钟从『慢 6 分钟』变为与宿主一致。"
+  source: "omp-host 真机 2026-10-20 + build/odm/ 前端逐字节复核"
+  affects: [screen-customization, module-link, driveall-protocol]
