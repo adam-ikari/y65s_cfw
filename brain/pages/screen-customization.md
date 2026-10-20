@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T16:15:06"
+updated: "2026-10-20T16:40:41"
 ---
 
 <!-- compiled_truth -->
@@ -203,4 +203,10 @@ updated: "2026-10-20T16:15:06"
   kind: evidence
   summary: "2026-10-20 用户报告：用【手机】蓝牙配对后，屏幕时间被更新 ⇒ BLE Current Time Service (0x1805) 路径确认是模块对时口的真实机制（模块是 BK3632 BLE 外设；Windows 不提供 CTS，所以用 PC 配对不同步是预期现象）。含义：(1) 模块 RTC 本身正常(速率对、能被设定)，之前恒定 +7 分钟只是出厂/历史设定值；(2) 同步一次后模块会持久化该时间，USB 直连模式下继续保持 ⇒ 日常只需在蓝牙下连一次即可对齐；(3) 若要自动化，需要自己写 BLE central 向模块 CTS 写时间（Windows 无现成 CTS 提供者，可用手机/树莓派当时间源）。"
   source: "用户实测报告 2026-10-20"
+  affects: [screen-customization, module-link]
+
+- time: 2026-10-20T16:40:41
+  kind: evidence
+  summary: "2026-10-20 校时问题的真正根因：模块时钟一直忠实显示【时间源设备】的时间。手机蓝牙配对后屏幕=00:23 而电脑=00:17 ⇒ 手机快 6 分钟；最初恒定 +7 分钟也是同一个时间源(很可能就是这台手机)的历史设定值 ⇒ 键盘/固件都没错，错在时间源。模块的 BLE 身份：名称 YD-Y65S-5.0，地址 FF:26:00:0F:0A:56，BLE VID/PID 0204:B35A；Windows 侧可见 GATT 服务 0x1800(GAP)/0x1801(GATT)/0x180A(Device Info)/0x180F(Battery)/0xF200(厂商)，未见标准 0x1805(CTS) ⇒ 手机写时间很可能走厂商服务 0xF200。注意 bleak 在 Windows 上无法连接『已连接不广播』的设备(BleakDeviceNotFoundError)，要直连需走 WinRT BluetoothLEDevice.from_bluetooth_address_async。"
+  source: "omp-host 真机 + Windows PnP/bleak 2026-10-20"
   affects: [screen-customization, module-link]

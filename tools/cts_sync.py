@@ -112,10 +112,35 @@ async def with_device(address: str, mode: str, offset: int) -> int:
         return 0
 
 
+async def dump_services(address: str) -> int:
+    from bleak import BleakClient
+
+    print(f"connecting to {address} ...", flush=True)
+    try:
+        async with BleakClient(address, timeout=15) as client:
+            print(f"connected: {client.address}  name={getattr(client, 'name', '?')}",
+                  flush=True)
+            for service in client.services:
+                print(f"service {service.uuid}  ({service.description})")
+                for char in service.characteristics:
+                    props = ",".join(char.properties)
+                    print(f"   char {char.uuid}  props=[{props}]  "
+                          f"desc={char.description}")
+                    for desc in char.descriptors:
+                        print(f"      desc {desc.uuid}  {desc.description}")
+    except Exception as exc:
+        print(f"连接/服务发现失败: {type(exc).__name__}: {exc}")
+        print("提示：Windows 的 BLE HID 驱动可能已独占该设备的 GATT 连接，"
+              "第三方 GATT 客户端连不上属正常。")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true", help="scan and list devices")
+    ap.add_argument("--dump", action="store_true",
+                    help="connect and print every GATT service/characteristic")
     ap.add_argument("--read", action="store_true", help="read the module clock")
     ap.add_argument("--write", action="store_true", help="write the PC clock")
     ap.add_argument("--address", help="BLE address of the keyboard")
@@ -126,6 +151,8 @@ def main() -> int:
     a = ap.parse_args()
 
     async def run() -> int:
+        if a.dump and a.address:
+            return await dump_services(a.address)
         if a.list or not a.address:
             return await show_devices(a.timeout)
         mode = "write" if a.write else "read"
