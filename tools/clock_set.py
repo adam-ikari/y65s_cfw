@@ -115,9 +115,12 @@ def build_packet(pack: str, content: bytes, content_size: int) -> bytes:
     odm10      -- same, but contentSize = 10 (just the time, no padding)
     raw        -- no header at all, just the 10 time bytes
     dotmatrix  -- the vendor's dot-matrix variant: the payload starts 3A
+    cmdprefix  -- the ODM command byte (0x34) in front of the time bytes
     """
     if pack == "raw":
         return bytes(content)
+    if pack == "cmdprefix":
+        return bytes([CMD_TEMPORARY_DATA]) + bytes(content)
     if pack == "dotmatrix":
         c = bytearray(content)
         c[0] = 0x3A
@@ -134,11 +137,13 @@ def time_content(now: dt.datetime) -> bytes:
 
 
 def record(cmd: int, data: bytes = b"", at: int = 0, sub: int | None = None,
-           size: int = PAYLOAD) -> bytes:
+           sub_at: int | None = None, size: int = PAYLOAD) -> bytes:
     p = bytearray(size)
     p[0] = cmd
     if sub is not None:
-        p[4] = sub & 0x07
+        # record 0x03 sub-dispatch reads xdata[0x08F7] = payload[1],
+        # record 0x05 picks its module command from xdata[0x08FA] = payload[4]
+        p[1 if sub_at is None else sub_at] = sub & 0x07
     if at:
         p[at:at + len(data)] = bytes(data)
     else:
@@ -156,16 +161,31 @@ LAYOUTS: dict[str, tuple[int, int]] = {
     "057": (0x05, 7),     # 512 byte window, module cmd 0x6E
 }
 
+# extra recipes: which module command carries the time, and how the content
+# is shaped.  `sub` is the record 0x03 sub-dispatch (1..4) and `pack` says how
+# the content is assembled.
+RECIPES: dict[str, dict] = {
+    "04raw":   {"rec": 0x04, "at": 7, "pack": "raw"},
+    "05raw":   {"rec": 0x05, "at": 7, "sub": 0, "sub_at": 4, "pack": "raw"},
+    "03s1raw": {"rec": 0x03, "at": 7, "sub": 1, "sub_at": 1, "pack": "raw"},
+    "03s2raw": {"rec": 0x03, "at": 7, "sub": 2, "sub_at": 1, "pack": "raw"},
+    "04dot":   {"rec": 0x04, "at": 7, "pack": "dotmatrix"},
+    "04cmd":   {"rec": 0x04, "at": 7, "pack": "cmdprefix"},
+    "05cmd":   {"rec": 0x05, "at": 7, "sub": 0, "sub_at": 4, "pack": "cmdprefix"},
+}
+
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", choices=sorted(LAYOUTS), action="append")
-    ap.add_argument("--pack", choices=["odm", "odm10", "raw", "dotmatrix"],
+    ap.add_argument("--recipe", choices=sorted(RECIPES), action="append",
+                    help="named content/channel recipes (see RECIPES)")
+    ap.add_argument("--distinct", action="store_true",
+                    help="give every recipe its own time (base + index minutes) "
+                         "so the screen shows which one landed")
+    ap.add_argument("--pack", choices=["odm", "odm10", "raw", "dotmatrix", "cmdprefix"],
                     default="odm", help="how the ODM packet is assembled")
-    ap.add_argument("--record", type=lambda s: int(s, 0),
-                    help="override the record command (0x0B/0x0C/0x0D/0x04/0x05)")
-    ap.add_argument("--at", type=int, help="override the offset inside the payload")
     ap.add_argument("--time", help="target time 'YYYY-MM-DD HH:MM:SS' (default: now)")
     ap.add_argument("--pause", type=float, default=2.0)
     ap.add_argument("--content-size", type=lambda s: int(s, 0), default=CONTENT_SIZE)
@@ -183,25 +203,29 @@ def main(argv: list[str]) -> int:
     print()
 
     dev = Device()
-    layouts = a.only or sorted(LAYOUTS)
-    for name in layouts:
-        cmd, at = LAYOUTS[name]
-        if a.record is not None:
-            cmd, at = a.record, (a.at if a.at is not None else at)
-            name = f"0x{cmd:02X}@{at}"
-        elif a.at is not None:
-            at = a.at
-            name = f"{name}@{at}"
-        sub = 0 if cmd == 0x05 else None
-        payload = record(cmd, packet, at=at, sub=sub)
-        t0 = time.time()
+    names = a.recipe or a.only or sorted(LAYOUTS)
+    for index, name in enumerate(names):
+        if name in RECIPES:
+            r = RECIPES[name]
+            cmd, at = r["rec"], r["at"]
+            sub, sub_at = r.get("sub"), r.get("sub_at")
+            pack = a.pack if a.pack != "odm" else r.get("pack", "odm")
+        else:
+            cmd, at = LAYOUTS[name]
+            sub, sub_at = (0, 4) if cmd == 0x05 else (None, None)
+            pack = a.pack
+        when = now + dt.timedelta(minutes=index) if a.distinct else now
+        packet = build_packet(pack, time_content(when), a.content_size)
+        payload = record(cmd, packet, at=at, sub=sub, sub_at=sub_at)
         ok = dev.send(payload)
         replies = dev.drain(a.pause)
         frame = replies[0] if replies else b""
         aa = frame[3] if len(frame) > 3 else None
-        print(f"{name:12s} record 0x{cmd:02X} @payload[{at}]  write={'ok' if ok else 'FAIL'}  "
+        print(f"{name:9s} rec 0x{cmd:02X} @payload[{at}] pack={pack:9s} "
+              f"time={when:%H:%M:%S}  write={'ok' if ok else 'FAIL'}  "
               f"reply={' '.join(f'{b:02x}' for b in frame) if frame else '(none)'}  "
               f"module_0xAA={'YES' if aa == 1 else 'no'}")
+        print(f"          bytes: " + " ".join(f"{b:02x}" for b in packet))
         time.sleep(0.3)
     return 0
 
