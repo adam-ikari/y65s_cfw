@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T15:24:14"
+updated: "2026-10-20T15:32:06"
 ---
 
 <!-- compiled_truth -->
@@ -186,3 +186,9 @@ updated: "2026-10-20T15:24:14"
   summary: "2026-10-20 找到本机官方厂商包：/tmp/y95drv（Y95 Keyboard Setup v2.0 安装包 + app/app/OemDrv.exe + Dev/kb/Screen/KB.ini + Text/sc/text.xml）。结论：官方驱动【没有校时功能】——UI 文本里没有『校时/时间/日期』，配置里的 SendTimeOnOpenKB / SendSysParam / SyncMask 三个键在 OemDrv.exe 里被读入对象(偏移 0x2830/0x2834)后【从未被读】(grep 全 .text 只有写没有读)，SendTimeOnOpenKB 是死配置 ⇒ 屏幕时钟是模块自己的自由走时钟(实测快约 2~3%%：20:51→20:55、23:02→23:09)，用户只能靠我们自己下发校时。KB.ini 其它事实：VID=258a PID=019D、siScreen=240,135(横屏)、MaxScreenFrame=40、RGBScreen=1、SendSysParam=2000、SyncMask=2。"
   source: "本机 /tmp/y95drv 厂商包 + objdump 反汇编 2026-10-20"
   affects: [screen-customization, driveall-protocol, module-link]
+
+- time: 2026-10-20T15:32:06
+  kind: evidence
+  summary: "2026-10-20 校时结论(第 N 轮)：用 Cloudflare/Google 的 HTTP Date 头交叉验证，宿主 PC 时钟准确(误差<1s)，所以『屏幕快 7 分钟』是实锤。模块的钟【速率正确、恒定偏 7 分钟、整机复位后仍保持】⇒ 它是模块自己的持久 RTC，只被设偏过一次。已穷举的可达模块命令(0x52 128B / 0x5E,0x62,0x66,0x6A 512B / 0x6E..0x75 512B / 0x81 520B) × 内容形状(raw 10B / ODM AA 34 18 头 / 3A 点阵版 / 34 前缀) 全部无效；profile 128B 的 0x00..0x39 逐字节偏移扫描(0-99)也无效(但证明 cmd 0x52 会被模块采纳：覆盖灯效字段 RGB 立刻变)。8051 侧全固件无任何时间逻辑(无 RTC SFR、无 5A 01 5A 模板、profile 里无时间字段)，官方 OemDrv.exe 也没有校时功能(SendTimeOnOpenKB/SendSysParam 是死配置)⇒ 主机→模块必有一条我们还没试到的『设时间』通道。"
+  source: "omp-host 真机 2026-10-20 多轮"
+  affects: [screen-customization, module-link]

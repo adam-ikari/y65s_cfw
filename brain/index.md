@@ -1,6 +1,6 @@
 # Brain Index
 
-_Auto-generated. Last updated 2026-10-20T15:24:14.452Z._
+_Auto-generated. Last updated 2026-10-20T15:32:06.572Z._
 
 - [brain-maintenance](pages/brain-maintenance.md) — category: reference | tags: [brain, tooling, git, crlf] | ## 症状
 - [custom-firmware-path](pages/custom-firmware-path.md) — category: decision | ## 结论
