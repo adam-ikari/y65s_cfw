@@ -162,6 +162,17 @@ def tft_header(idx: int, total: int) -> bytes:
                   total & 0xFF, (total >> 8) & 0xFF, 0x50, 0x06])
 
 
+def generic_header(cmd: int, length: int, addr: int, last: bool) -> bytes:
+    """AA <cmd> <len> <addr_lo> <addr_hi> 00 <isLast> 00 (the vendor `xn` header).
+
+    The YD-Y65S module may be an ODM implementation that uses this generic
+    header for *every* command -- including the TFT upload, where the custom
+    header would be misread (bytes 2..5 mean idx/total there, but len/addr here).
+    """
+    return bytes([0xAA, cmd & 0xFF, length & 0xFF, addr & 0xFF, (addr >> 8) & 0xFF,
+                  0x00, 0x01 if last else 0x00, 0x00])
+
+
 def time_payload(now: dt.datetime | None = None) -> bytes:
     """5A 01 5A yy mm dd hh mi ss wd  (vendor Hu)."""
     now = now or dt.datetime.now()
@@ -209,8 +220,13 @@ def tft_stream(w: int, h: int, frames: int = 1) -> bytes:
 
 
 def builtin_blob() -> bytes:
-    """The 128 byte screen-content blob that the firmware sends at session start."""
+    """The 128 byte profile block that the firmware sends at session start."""
     return FIRMWARE.read_bytes()[BUILTIN_BLOB:BUILTIN_BLOB + WINDOW]
+
+
+def profile_alt() -> bytes:
+    """The second copy of the same profile (0xA400); differs in one byte."""
+    return FIRMWARE.read_bytes()[0xA400:0xA400 + WINDOW]
 
 
 # --------------------------------------------------------------------------
@@ -255,16 +271,27 @@ def exp_clock(dev: Device, pause: float) -> int:
 
 
 def exp_native(dev: Device, pause: float) -> int:
-    """Replay the firmware's built-in content blob, then patched variants."""
-    blob = builtin_blob()
+    """Replay the firmware's built-in profile blocks, then patched variants.
+
+    The 128 B block the firmware sends as module cmd 0x52 is a *profile*:
+    bytes 0x00..0x39 are fields the MCU reads itself (LED effect index at
+    0x0A, LED mode at 0x33, ...), bytes 0x3A..0x7D are never read by the MCU
+    and are therefore meant for the module, and the block ends with the
+    5A A5 marker.  Two copies live in flash (0x9983 and 0xA400) and differ in
+    exactly one byte (offset 0x4F).
+    """
+    a = builtin_blob()
+    b = profile_alt()
+    diff = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+    say(f"内置 profile: 0x9983 与 0xA400 仅在偏移 {[hex(d) for d in diff]} 不同")
     variants = [
-        ("N1 原样内置内容 (128 B)", blob),
-        ("N2 尾部像素改成纯红", blob[:52] + rgb565(255, 0, 0) * 18 + blob[88:]),
-        ("N3 尾部像素改成纯蓝", blob[:52] + rgb565(0, 0, 255) * 18 + blob[88:]),
-        ("N4 尾部像素清零", blob[:52] + bytes(36) + blob[88:]),
+        ("N1 原样 0x9983（固件开机时发的就是它）", a),
+        ("N2 原样 0xA400（另一份 profile）", b),
+        ("N3 0x9983 尾部像素改纯红", a[:0x3A] + rgb565(255, 0, 0) * 34 + a[0x7E:]),
+        ("N4 0x9983 尾部像素改纯蓝", a[:0x3A] + rgb565(0, 0, 255) * 34 + a[0x7E:]),
+        ("N5 0x9983 偏移 0x4F 改成 0x05", a[:0x4F] + b"\x05" + a[0x50:]),
     ]
-    say("内置内容复现实验: N1 应当重现固件开机时的画面。")
-    say("N2/N3/N4 若画面有变化 -> 128 B 窗口就是可自定义的屏幕内容通道。")
+    say("N1/N2 应当复现固件开机画面；N3/N4 若画面变色 ⇒ 尾部就是模块端的像素/调色板。")
     for name, data in variants:
         say("")
         say(f"--- {name}")
@@ -296,7 +323,7 @@ def exp_builtin(dev: Device, index: int, pause: float) -> int:
 
 
 def exp_tft(dev: Device, w: int, h: int, path: str, at: int, delay: float,
-            limit: int) -> int:
+            limit: int, hdr: str) -> int:
     """Upload a test picture as an ODM SET_TFT_USER_ANIMATION packet stream."""
     stream = tft_stream(w, h)
     if path == "05":
@@ -310,12 +337,16 @@ def exp_tft(dev: Device, w: int, h: int, path: str, at: int, delay: float,
     data_per = window - 8
     total = (len(stream) + data_per - 1) // data_per
     say(f"TFT 上传: {w}x{h}  流 {len(stream)} B  {total} 包 x {data_per} B 数据"
-        f"（包窗 {window} B，ODM 包放在 payload[{at}]）"
+        f"（包窗 {window} B，ODM 包放在 payload[{at}]，包头 {hdr}）"
         f"路径 {'record 0x05' if path == '05' else 'record 0x0B 批量'}")
     for idx in range(min(total, limit)):
         piece = stream[idx * data_per:(idx + 1) * data_per]
         piece += bytes(data_per - len(piece))
-        packet = tft_header(idx, total) + piece
+        if hdr == "custom":
+            packet = tft_header(idx, total) + piece
+        else:
+            last = idx == total - 1
+            packet = generic_header(0x50, len(piece), idx * data_per, last) + piece
         if path == "05":
             payload = rec_block(packet, sub=0x00, at=at)
         else:
@@ -366,6 +397,9 @@ def main(argv: list[str]) -> int:
                    help="ODM 包在记录 payload 里的偏移 (默认 05->7, 81->1)")
     t.add_argument("--delay", type=float, default=1.8)
     t.add_argument("--limit", type=int, default=100000)
+    t.add_argument("--hdr", choices=["custom", "generic"], default="custom",
+                   help="custom = 厂商 AA 50 idx total 50 06 / "
+                        "generic = AA 50 len addr 00 isLast 00")
 
     r = sub.add_parser("raw", help="发送任意记录")
     r.add_argument("--cmd", type=lambda s: int(s, 0), default=0x04)
@@ -382,7 +416,7 @@ def main(argv: list[str]) -> int:
         return exp_builtin(dev, a.index, a.pause)
     if a.cmd == "tft":
         at = a.at if a.at is not None else (DATA_OFF if a.path == "05" else 1)
-        return exp_tft(dev, a.w, a.h, a.path, at, a.delay, a.limit)
+        return exp_tft(dev, a.w, a.h, a.path, at, a.delay, a.limit, a.hdr)
     if a.cmd == "raw":
         data = pathlib.Path(a.file).read_bytes()
         return exp_raw(dev, data, a.at, a.cmd)

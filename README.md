@@ -306,6 +306,35 @@ TFT 上传每包数据长度 = **设备报告长度 − 8**（厂商设备 4104 
 内置 128 B 内容表（`0x9983`）首字节是 `00`、尾字节 `5A A5`，中段是 `14 17` 重复 ⇒ **模块 cmd 0x52 的载荷
 是原生长度内容块，不是 ODM 请求包**（只有应答侧是 ODM 风格的 `0x55` 头）。
 
+### 这 128 B 其实是「profile 表」（2026-10-20 解出）
+
+固件里有**两份**同样的 128 B 结构，**只差偏移 `0x4F` 一个字节**：
+
+| flash | 用途 |
+|---|---|
+| `0x9983..0x9A02` | 出厂默认 profile；会话回放器把它整块发给模块 |
+| `0xA400..0xA47F` | 当前生效 profile；8051 逐字段读它 |
+
+代码里的 `MOV DPTR,#0xA4xx` + `MOVC` 给出了字段映射：偏移 `0x0A` → `[0x0F65]`（**灯效索引**）、
+`0x33` → `[0x0F64]`（**灯效模式**，记录 0x0D 把它改成 2）、`0x03/0x16/0x18/0x1F/0x31/0x35/0x36/0x37`
+另有若干未定位字段。**`0x3A..0x7D` 那 68 B（`14 17` 重复）全固件无人读取** ⇒ 只给模块用（疑似像素/调色板）。
+尾部 `0x7E/0x7F = 5A A5` 是**标记**：`0x7C91` 检查到它就认为 profile 已初始化，**不再**把默认 profile 发给模块。
+
+两条可直接用的推论：① 想改屏幕就改 profile 尾部那 68 B；② 用记录 0x04 发 profile 时**尾部不能是 `5A A5`**，
+否则模块认为"没变化"（而出厂的 `0x9983` 尾部恰恰就是 `5A A5`）。
+
+### 两条「内容」通道的差别
+
+| 通道 | 记录 | 转发内容 | 每包数据长度 |
+|---|---|---|---|
+| 字节流 | 0x04 | payload[7..134]（128 B），cmd 0x52 | 固定 128 B 窗 |
+| 字节流 | 0x05 | payload[7..518]（512 B），cmd 0x6E+sub | 固定 512 B 窗 = 8 B 包头 + 504 B 数据 |
+| 批量 | 0x0B/0x0C/0x0D | 整块 520 B（report ID + 519 payload），cmd 0x81 | 520 B 块 = 1 B ID + 519 B |
+
+**包头语义冲突（重要）**：厂商 TFT 专用包头把 byte2..5 当 *idx/total*，通用 `xn` 包头把 byte2 当 *len*、
+byte3..4 当 *addr*、byte6 当 *isLast*。同一批字节两种解释 ⇒ 若 YD-Y65S 的模块是通用 `xn` 实现，
+用专用包头发的整条流对模块就是垃圾 ⇒ **两种包头都要试**（`tft_probe.py tft --hdr custom|generic`）。
+
 ### 实测效果（`build/probe/`，全部为 RAM/模块链路操作，无闪存写入）
 
 1. cmd `0x04` + ODM 时间包（`AA 34 0A 00 00 00 01 00 | 5A 01 5A yy mm dd hh mi ss wd`）→
@@ -339,11 +368,12 @@ TFT 上传每包数据长度 = **设备报告长度 − 8**（厂商设备 4104 
 
 ```bash
 uv run tools/tft_probe.py clock      # 4 种窗口布局的校时包 -> 哪个让屏幕时钟跳到目标时间
-uv run tools/tft_probe.py native     # 复现固件内置 128 B 内容块 + 改写尾部像素
+uv run tools/tft_probe.py native     # 两份 profile 原样 + 尾部像素改写
 uv run tools/tft_probe.py builtin --index 0   # 内置图索引 (模块 cmd 0x6F)
-uv run tools/tft_probe.py tft --path 05 --w 135 --h 240   # 0x05 通道上传 (504 B/包)
-uv run tools/tft_probe.py tft --path 81 --w 135 --h 240   # 0x81 批量通道上传 (511 B/包)
-uv run tools/tft_probe.py raw --cmd 04 --file payload.bin # 任意记录
+uv run tools/tft_probe.py tft --path 05 --w 135 --h 240            # 0x05 通道 (504 B/包, 专用包头)
+uv run tools/tft_probe.py tft --path 05 --hdr generic              # 0x05 通道 (通用 xn 包头)
+uv run tools/tft_probe.py tft --path 81 --w 135 --h 240            # 0x81 批量通道
+uv run tools/tft_probe.py raw --cmd 04 --file payload.bin         # 任意记录
 ```
 
 `clock` 是**唯一能低成本判定"模块到底吃不吃 ODM 包"的实验**（顺带把窗口偏移钉死）；
