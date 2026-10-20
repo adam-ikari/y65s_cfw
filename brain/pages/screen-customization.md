@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T16:10:12"
+updated: "2026-10-20T16:15:06"
 ---
 
 <!-- compiled_truth -->
@@ -198,3 +198,9 @@ updated: "2026-10-20T16:10:12"
   summary: "2026-10-20 校时线结论(穷尽)：主机可达的模块命令被 8051 固件写死为 0x52(记录0x04)、0x6E..0x75(记录0x05, sub<=7 故 0x75 是上限)、0x62/0x66/0x6A/0x5E(记录0x03 子分发1..4)、0x81(记录0x0B/0x0C/0x0D)；记录 0x06/0x0A 用 flash 固定表(主机改不了)、记录 0x08 写 RAM 配置表且会持久化到 flash 0xA800(危险)。已扫 ~60 个组合仍全灭：通道(上述 13 个) × 内容形状(raw 10B / AA 34 18 头 contentSize 24 与 10 / 3A 点阵版 / 34 前缀 / 5A 5A 重复 tag / 星期前置 / BCD / 十进制 / isLast=0 / 星期以周一为 0) + profile 偏移 0..99 × 2 格式 + 节拍(连发3次/120ms)。⇒ 若『设时间』命令存在，其命令号必在上述集合内，而该集合已扫遍 ⇒ 结论：这条 HID 桥没有可用的校时通道，模块 RTC 的 +7 分钟是出厂常量(速率正确、重启保留、BLE 用 PC 测不同步因 Windows 不提供 CTS)。唯一剩余机制是 BLE Current Time Service，须用手机(Android 提供 CTS)配对 BT1(Fn+Z)验证。"
   source: "omp-host 真机 2026-10-20 多轮穷举"
   affects: [screen-customization, module-link, driveall-protocol]
+
+- time: 2026-10-20T16:15:06
+  kind: evidence
+  summary: "2026-10-20 用户报告：用【手机】蓝牙配对后，屏幕时间被更新 ⇒ BLE Current Time Service (0x1805) 路径确认是模块对时口的真实机制（模块是 BK3632 BLE 外设；Windows 不提供 CTS，所以用 PC 配对不同步是预期现象）。含义：(1) 模块 RTC 本身正常(速率对、能被设定)，之前恒定 +7 分钟只是出厂/历史设定值；(2) 同步一次后模块会持久化该时间，USB 直连模式下继续保持 ⇒ 日常只需在蓝牙下连一次即可对齐；(3) 若要自动化，需要自己写 BLE central 向模块 CTS 写时间（Windows 无现成 CTS 提供者，可用手机/树莓派当时间源）。"
+  source: "用户实测报告 2026-10-20"
+  affects: [screen-customization, module-link]
