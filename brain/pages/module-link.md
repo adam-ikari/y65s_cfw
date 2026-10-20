@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T08:00:07"
+updated: "2026-10-20T12:05:14"
 ---
 
 <!-- compiled_truth -->
@@ -271,3 +271,39 @@ updated: "2026-10-20T08:00:07"
   summary: "2026-10-20 追加：128 B 的 cmd-0x52 块其实是『设备/屏幕 profile』表（0x9983 与 0xA400 两份，仅差偏移 0x4F 一字节），并给出字段映射与 5A A5 标记语义"
   source: "build/fw_full.lst 0x7C91-0x7D3C / 0x2069 / 0x78A9 / 0xD021 + firmware 字节比对"
   affects: [module-link]
+
+- time: 2026-10-20T10:00:15
+  kind: evidence
+  summary: "record 0x0C 的精确线上格式(反编译 FUN_0048d790 复核): [0]=reportID 09, [1]=0x0C, [2]=0, [3]=pageIndex(帧号), [4]=全帧 512B 块 running seq(0 起, 每块+1), [5]=0, [6..7]=本块长度, [8..]=RGB565BE 像素. 模块的 0x81 大块帧把整个 520B 记录原样转发. 主机侧应答 [09 0A 06 01 seq] 中 seq=记录 byte4; 该应答由主控在 UART 发送完 520B 时本地置 0xD84=0xAA 后合成(0x9BA7<-0xAF58/BITS_4E 路径), 不是模块回复; 0x0E0A==1 才合成成功态. ⇒ 主机 ACK 只证明已推上 UART, 不能证明模块接受/渲染."
+  source: "Ghidra FUN_0048d790/FUN_0048a720 + fw_full.lst 0x9B7E-0x9BDA/0xAF58 + 主机实测"
+  affects: [module-link, host-vendor-channel]
+
+- time: 2026-10-20T10:29:47
+  kind: evidence
+  summary: "OemDrv.exe BurnScreenThread(0x492cd0) 完整时序复核: 上传前读设备就绪(vtable+0x14) -> Sleep(50) -> record 0x0D SetGIFParam(flag=1,gif=0,nframes,delay) 等 ACK -> Sleep(120) -> 每帧 ARGB 转 RGB565BE(0x492ad0) 后 record 0x0C AccessData_Page(vtable+0x44) -> 每帧后 Sleep(50) -> 末帧后 record 0x0D(flag=0 成功/2 失败) -> Sleep(500). 线程内没有任何额外激活/切换命令; CDevG5KB::ApplySetting 0x48cd00 与 CDevG5MS::ApplySetting 0x490af0 均只配置灯效矩阵/按键/宏, 与 TFT 内容切换无关. RTTI: vtable 0x60ebcc=.?AVCDevG5KB@@, 次 vtable 0x60ba28=.?AVCRingBuffer@@, 构造 0x48a110"
+  source: "objdump /tmp/oemdrv.asm 0x492cd0/0x492fa0/0x48cd00/0x490af0 + PE RTTI 解析"
+  affects: [module-link]
+
+- time: 2026-10-20T10:52:35
+  kind: evidence
+  summary: "2026-10-20 静态复核记录分发器 0x6346: 仅接受记录 cmd 0x03..0x0D(3 字节跳表 0x6373), 0x0E 及以上直接忽略; 所有模块发送都过 0xA331 白名单(0x52/0x5E/0x5F/0x62/0x63/0x66/0x67/0x6A/0x6B/0x54/0x56 + 0x6E..0x75), 不含 ODM OTA 命令 0x9E..0xA4(128..134+0x1E); 固件中不存在原始 UART 直通路径 ⇒ 主机无法经现有记录协议让模块进入 OTA/boot。"
+  source: build/fw_full.lst 0x6346/0x6373/0xA331/0xBADB/0xBAF6
+  affects: [module-link]
+
+- time: 2026-10-20T10:52:40
+  kind: evidence
+  summary: "2026-10-20 软件侧模组固件通道全部探空: (1) 主机 report ID 3(ff02/1) 空闲与记录 0x04 触发后均无任何输入报告, 不是模块回包通道; (2) ODM 网页 OTA 是 Sonix 主控 ISP(WebHID + sn_isp_lib wasm + gm 命令 AA42895AFF.../AA55A55AFF..., 仅列 0x0C45 Sonix 设备), 与 258A:019D 屏幕模组无关; (3) cp.driveall.cn firmware API 查 yunzii/Y95 返回数据为空; (4) 原厂安装包内只有主控上位机与配置, 无模组固件; UpdateDir 被注释, 厂商更新服务器 120.79.152.79/update/ 已 404. ⇒ 不拆机前提下拿不到也写不进模组固件."
+  source: "host y65s_trigger3.py(seen3=0), build/odm/layout-classic-Bylu1MNp.js, /tmp/y95drv Cfg.ini + innoextract 列表, HTTP 查询"
+  affects: [module-link]
+
+- time: 2026-10-20T11:41:16
+  kind: evidence
+  summary: "2026-10-20 补充：主机每发一条 feature-9 记录，设备回 1 帧 8 字节 input report 9 = [0x09(id) 0x0A 0x06 0x00/0x01 计数器 00 00 00]；第 4 字节 0x01 表示模块回过 0xAA(=固件 0x9BA7 把模块应答 0xAA 存进 [0x0D84])，0x00 表示超时/其它(0x9BD2 存 0x55)。计数器在 [0x0EF4]/[0x0EDF]。这帧是【模块事务结果】的可观测信号，可当 oracle 用。"
+  source: "固件 0x9893-0x98D1 + 真机实测"
+  affects: [module-link]
+
+- time: 2026-10-20T12:05:14
+  kind: reversal
+  summary: "2026-10-20 自我更正：之前用 'Windows HID 实例 id(9&xxxx) 没变' 判断设备有没有重新枚举是错的 —— 该 id 按端口/接口稳定生成，重新枚举后不变；只有历史上不同枚举留下的 PHANTOM 节点才带不同的哈希。判断'是否重启过'必须看别的证据（如 GetFeature 读回的描述符缓冲内容变化、或 0603 出现）。"
+  source: "2026-10-20 复核 PnP 实例 id 语义"
+  affects: [module-link, host-vendor-channel]

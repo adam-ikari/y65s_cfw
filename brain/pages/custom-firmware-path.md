@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T23:09:56"
+updated: "2026-10-20T10:52:58"
 ---
 
 
@@ -120,3 +120,15 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   summary: "新增判定：自制固件不可能做在屏幕模组(第二颗 SoC)上(固件不可读/型号未知/无烧写通道)；SMK 主控固件才是唯一落点，且应在其中实现主控<->模块 UART 链路(0x50 帧 + 0x81 大块转发)与 feature 9 接收，见 module-link"
   source: build/fw_full.lst
   affects: [custom-firmware-path, module-link, screen-customization]
+
+- time: 2026-10-20T10:37:02
+  kind: note
+  summary: "2026-10-20 用户把自制固件目标从主控 SMK 转向屏幕/无线模组. 旧结论『模组自制固件不可行』依据是无固件/无型号/无烧写通道, 目前仍未发现反证, 但开始硬件识别: 拆机看 SoC 丝印、外部 SPI flash(用户动画区 0x650000 暗示 >=8MB 外部 flash)、SWD/UART 测试点; 若能 dump 固件或找到调试口, 再评估自定义固件与工具链"
+  source: "用户决策 + OEM 工具资源扫描"
+  affects: [custom-firmware-path]
+
+- time: 2026-10-20T10:52:58
+  kind: evidence
+  summary: "2026-10-20 排除『借厂商 OTA 通道给模组刷自制固件』: ODM 网页 OTA 实为 Sonix 主控 ISP(仅 0x0C45 设备/WASM sn_isp_lib), 而 Y95 的 258A:019D 记录协议白名单不含 OTA 命令, 原厂安装包/更新服务器也没有模组固件. 所以本页的 SMK 主控固件仍是唯一可自制的固件载体; 模组侧只能当显示外设驱动."
+  source: "build/odm/layout-classic-Bylu1MNp.js + gm 表 + build/fw_full.lst 0xA331"
+  affects: [custom-firmware-path]

@@ -193,6 +193,35 @@ powershell -ExecutionPolicy Bypass -File tools\sim-tests.ps1
   （96×160 / 135×240 / 240×240 / 240×135）。该前端要求 usage page `0xFFE7`，
   而本机厂商通道是 `0xFF02`（`258a:019d`）⇒ 不能直接用，但可用于比对固件里的主机命令通道。
 
+## 设备恢复：远程重启 / 用备份重刷（2026-10-20 新增）
+
+键盘被厂商记录玩坏时（**按键不响应、但 RGB 与屏幕照常**），两条恢复路径，都**不需要拆机**：
+
+* **远程软重启**（不动 flash）：`tools/isp_reboot.py`
+  1. 向 `258a:019d` 的 `0xff00/0x0001`（FeatureReportByteLength=6）集合发
+     `SetFeature(report 5, 05 75 00 00 00 00)` ⇒ 主控跳进 ISP，设备重枚举成 `0603:1020 'Gaming KB '`；
+  2. 再发 `SetFeature(report 5, 05 5a 00 00 00 00)` ⇒ bootloader 跳回应用，重枚举回 `258A:019D`。
+  * 注意：跳转发生在传输途中，所以 `HidD_SetFeature` **返回 FALSE 反而是成功的信号**；
+    payload 里的 report id 不要再额外前置（`05 05 75 …` 是错的）。
+* **用备份重刷**（写 flash，需用户逐次授权）：`sinowisp` v2.1.0
+  ```
+  sinowisp write --platform sh68f90 --vendor_id 0x258a --product_id 0x019d YD-Y65S_restore_fw.bin
+  ```
+  * sinowisp 自己会发进入 ISP 的 magic（传**应用态**的 VID/PID 即可），流程是
+    `Erasing → Writing → Reading → Verifying → Enabling firmware → Rebooting`，**校验不过就不 enable**。
+  * 只写固件区 `0x0000-0xEFFF`（61440 B），**ISP bootloader 区 `0xF000-0xFFFF` 不碰** ⇒ 不会把自己刷死。
+  * 读写的重定位约定：读/写时 `0x0001-0x0002` 与 `0xEFFC-0xEFFD` 互为镜像（应用复位向量在那里），
+    `0xEFFB=0x02` 表示"固件已启用"。备份取自 `firmware/backups/YD-Y65S_full_20261019.bin`。
+
+### 2026-10-20 那次事故的实测结论
+
+* 厂商固件**会自己往 flash 里写**：恢复前读到的整片与 2026-10-19 备份差 **457 B**
+  （`0xA44F` 一个字节 + `0xA800` 起的 `FF→00` 块）——这些是设备运行期自己写的，重启不会消除。
+* **整机复位（ISP 往返）修不好"按键不响应"**：复位后 flash 里那 457 B 依旧在 ⇒ 症状与它有关；
+  用备份重刷后整片读回 **MD5 与备份逐字节一致**（`3f7ee6ae90e5568fe4b9e34cc71e2135`，0 字节差异）。
+* 因此「厂商记录写坏 RAM」是错的假设：记录只动 RAM/RAM 配置表（`xdata 0x0377` 起），
+  真正致命的是**设备随后把某些状态固化进 flash**。
+
 ## 主机厂商通道（usage `0xff02` / HID report 9）
 
 * 键盘 IF1 的厂商命令通道是 **col07 = `usagePage 0xff02` / `usage 0x0002`**：

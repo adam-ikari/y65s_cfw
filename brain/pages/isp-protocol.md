@@ -4,7 +4,7 @@ title: "ISP 协议 (ISP Protocol)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T16:46:29"
+updated: "2026-10-20T12:05:14"
 ---
 
 <!-- compiled_truth -->
@@ -70,3 +70,9 @@ ISP 读回的 payload 中 `0x0001-0x0002` 实际来自 `flash[0xEFFC-0xEFFD]`（
   summary: "\""
   source: brain update-truth
   affects: [isp-protocol]
+
+- time: 2026-10-20T12:05:14
+  kind: evidence
+  summary: "2026-10-20 真机事故后远程软重启成功（不写 flash）：向 258a:019d 的 0xff00/0x0001、FeatureReportByteLength=6 的集合发 SetFeature(report 5, 05 75 00 00 00 00) 即进 ISP，设备重枚举为 0603:1020 'Gaming KB '（集合 0xff00/0x0001：feat=6 命令通道 + feat=2050 页通道）；再向同一集合发 SetFeature(report 5, 05 5a 00 00 00 00) 即回应用，设备重枚举回 258A:019D。细节：进入 ISP 的那次 HidD_SetFeature 返回 FALSE（设备在传输中跳走，传输被打断），'失败' 反而是成功的信号；退出 ISP 同理也是返回 FALSE。应用模式下 258a:019d 的两个 0xff00 集合是 feat=6（report 5 命令）与 feat=1032（report 6 页），别发错集合。"
+  source: "omp-host 真机 2026-10-20 + 固件 0x8363/0x82DC 复核"
+  affects: [isp-protocol, screen-customization]

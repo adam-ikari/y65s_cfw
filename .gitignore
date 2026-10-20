@@ -21,3 +21,6 @@ tools/bin/
 .idea/
 Thumbs.db
 desktop.ini
+
+# agent local settings (may contain MCP credentials)
+.qoder/

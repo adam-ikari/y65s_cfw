@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T07:54:42"
+updated: "2026-10-20T11:41:16"
 ---
 
 <!-- compiled_truth -->
@@ -138,3 +138,33 @@ updated: "2026-10-20T07:54:42"
   summary: "2026-10-20 复盘 135x240 上传失败：帧格式与厂商逐字节一致，失败点在『每包数据长度』与『窗口内偏移』两处未定；新增 tools/tft_probe.py 实验矩阵"
   source: "build/odm/layout-classic JS 复核 + fw_full.lst + 实测记录"
   affects: [screen-customization]
+
+- time: 2026-10-20T10:00:11
+  kind: evidence
+  summary: "原生 TFT 上传链路在真实 Y65S 上打通(2026-10-20 主机实测): 按 OemDrv.exe 解出的 record 0x0D SetGIFParam(flag=1,nframes,delay) -> record 0x0C AccessData_Page(page=帧号, seq=全帧内 512B 块序号, RGB565BE) -> 末帧后 record 0x0D(flag=0); 240x135(64800B,127 块) 与 135x240 两版全部分块均收到 [09 0A 06 01 seq] 应答, 末条 flag=0 也应答. 注意: 该应答由主控在 520B 帧从 UART 发完时本地合成(0x9BA7, 0xD84=AA), 不代表模块渲染成功. OemDrv 设备配置 Dev/kb/Screen/KB.ini(VID=258a PID=019D 与本机一致) 给出 siScreen=240,135, MaxScreenFrame=40, RGBScreen=1 ⇒ 屏幕按 240x135 横屏处理. 屏幕实拍结果待用户确认."
+  source: "host HID 实测 2026-10-20 + /tmp/y95drv/app/app/Dev/kb/Screen/KB.ini"
+  affects: [screen-customization, module-link]
+
+- time: 2026-10-20T10:30:35
+  kind: evidence
+  summary: "原生 TFT 上传协议端到端验证成功(2026-10-20): 按 OemDrv BurnScreenThread 时序(Sleep50 -> 0x0D flag=1 -> Sleep120 -> 每帧 0x0C page/seq 512B -> Sleep50 -> 0x0D flag=0 -> Sleep500) 上传 240x135 纯红 RGB565BE, 用户目视确认屏幕显示红色. 说明模块确实采纳并渲染, 记录 0x0C 的 page/seq 语义与 RGB565BE 字节序均正确; 主机 ACK 之外需要 OEM 时序才能落地(此前无 Sleep 的版本未被采纳). 下一步: 用四角标记图确认屏幕方向/旋转和最终上传工具化"
+  source: "host HID 实测 2026-10-20 + 用户目视确认『看到红色图片』"
+  affects: [screen-customization]
+
+- time: 2026-10-20T10:37:02
+  kind: decision
+  summary: "用户目标升级(2026-10-20): 不只是上传图片, 而是要破解屏幕/无线模组固件、在第二颗 SoC 上运行自定义应用. 现状: OEM 工具不含模组固件或升级包(仅屏幕素材), 设备信息只暴露主控版本; 已知模组 UART 协议与用户动画区 0x650000, 但没有 SoC 型号、固件或烧写通道. 下一步: 拆机拍照识别模组 SoC 丝印、外部 SPI flash、SWD/UART 测试点, 再选 SWD/JTAG 读取、SPI flash 夹取或 UART bootloader 路线"
+  source: "用户: 但是我想要破解固件运行应用 (选择屏幕/无线模组) + /tmp/y95drv 资源扫描"
+  affects: [screen-customization]
+
+- time: 2026-10-20T10:52:47
+  kind: reversal
+  summary: "2026-10-20 用户新目标改为『破解固件在屏幕上运行应用』, 目标芯片=屏幕/无线模组, 硬约束=不能拆机(无 SWD/SPI/UART 接触). 结论: 现有全部软件通道均无法把自定义代码写入/替换模组固件(主控记录协议只放行 0x03..0x0D 且模块命令白名单不含 OTA; 厂商 OTA 是 Sonix 主控 ISP; 无 Y95 模组固件包). 可执行的替代: (A, 推荐) PC 侧运行时经已打通的 0x0D/0x0C 协议实时推帧, 应用跑在 PC 上; (B) 主控 SMK 自制固件把屏幕当显示器, 应用跑在 SH68F90A(需主控 flash 写入授权); (C) 用户提供原厂模组 OTA/固件包后再离线逆. 拆机改装不在选项内."
+  source: "2026-10-20 会话调查: fw_full.lst 0x6346/0xA331, ODM JS/wasm, OEM 安装包, 固件 API, host 实测"
+  affects: [screen-customization]
+
+- time: 2026-10-20T11:41:16
+  kind: evidence
+  summary: "2026-10-20 真机实验事故：19:2x-19:3x 在 Windows 宿主上对真机跑记录矩阵(0x03/0x04/0x05/0x06/0x08/0x0A 等)后，键盘失去输入能力(无法打字)；设备仍能响应 USB GetFeature(report 9)并回 8 字节状态帧，说明 MCU 的 USB ISR 还活着、卡住的是主循环/按键扫描或主机侧 USB 实例。"
+  source: "omp-host 真机探测 2026-10-20"
+  affects: [screen-customization, module-link, no-write-policy]
