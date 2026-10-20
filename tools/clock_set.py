@@ -208,6 +208,11 @@ def main(argv: list[str]) -> int:
                     help="weekday base: 0 = Sunday (ODM) or 0 = Monday")
     ap.add_argument("--no-last", action="store_true",
                     help="clear the isLast flag in the ODM header")
+    ap.add_argument("--overlay", help="start:end -- overlay the time content into "
+                                      "the built-in profile at every byte offset in "
+                                      "the range and send it via record 0x04; the "
+                                      "time is base+offset minutes so the screen "
+                                      "shows which offset landed")
     a = ap.parse_args(argv)
 
     if a.time:
@@ -224,6 +229,24 @@ def main(argv: list[str]) -> int:
     print()
 
     dev = Device()
+    if a.overlay:
+        lo, hi = (int(x, 0) for x in a.overlay.split(":"))
+        fw = pathlib.Path(__file__).resolve().parent.parent / "firmware" / "YD-Y65S_full.bin"
+        profile = bytearray(fw.read_bytes()[0x9983:0x9983 + 128])
+        for k in range(lo, hi):
+            when = now + dt.timedelta(minutes=k)
+            body = bytearray(profile)
+            content = time_content(when, a.encode, a.weekday)
+            body[k:k + len(content)] = content
+            payload = record(0x04, bytes(body), at=7)
+            ok = dev.send(payload)
+            replies = dev.drain(a.pause)
+            frame = replies[0] if replies else b""
+            print(f"offset {k:3d}  time={when:%H:%M:%S}  write={'ok' if ok else 'FAIL'}  "
+                  f"reply={' '.join(f'{b:02x}' for b in frame) if frame else '(none)'}")
+            time.sleep(0.2)
+        return 0
+
     jobs: list[tuple[str, int, int, int | None, int | None, str]] = []
     for name in (a.recipe or a.only or []):
         if name in RECIPES:
