@@ -108,6 +108,24 @@ def odm_packet(cmd: int, content: bytes, content_size: int = CONTENT_SIZE,
     return bytes(hdr) + bytes(body)
 
 
+def build_packet(pack: str, content: bytes, content_size: int) -> bytes:
+    """Assemble the bytes to push into the record.
+
+    odm        -- the vendor `xn` header + a 24 byte content (default)
+    odm10      -- same, but contentSize = 10 (just the time, no padding)
+    raw        -- no header at all, just the 10 time bytes
+    dotmatrix  -- the vendor's dot-matrix variant: the payload starts 3A
+    """
+    if pack == "raw":
+        return bytes(content)
+    if pack == "dotmatrix":
+        c = bytearray(content)
+        c[0] = 0x3A
+        return odm_packet(CMD_TEMPORARY_DATA, bytes(c), content_size)
+    size = 10 if pack == "odm10" else content_size
+    return odm_packet(CMD_TEMPORARY_DATA, content, size)
+
+
 def time_content(now: dt.datetime) -> bytes:
     """5A 01 5A yy mm dd hh mi ss wd  (weekday 0 = Sunday)."""
     wd = (now.weekday() + 1) % 7
@@ -143,6 +161,11 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", choices=sorted(LAYOUTS), action="append")
+    ap.add_argument("--pack", choices=["odm", "odm10", "raw", "dotmatrix"],
+                    default="odm", help="how the ODM packet is assembled")
+    ap.add_argument("--record", type=lambda s: int(s, 0),
+                    help="override the record command (0x0B/0x0C/0x0D/0x04/0x05)")
+    ap.add_argument("--at", type=int, help="override the offset inside the payload")
     ap.add_argument("--time", help="target time 'YYYY-MM-DD HH:MM:SS' (default: now)")
     ap.add_argument("--pause", type=float, default=2.0)
     ap.add_argument("--content-size", type=lambda s: int(s, 0), default=CONTENT_SIZE)
@@ -153,15 +176,22 @@ def main(argv: list[str]) -> int:
     else:
         now = dt.datetime.now()
 
-    packet = odm_packet(CMD_TEMPORARY_DATA, time_content(now), a.content_size)
-    print(f"目标时间 {now:%Y-%m-%d %H:%M:%S} (星期 {time_content(now)[9]})")
-    print("ODM 包 (" + str(len(packet)) + " B): " + " ".join(f"{b:02x}" for b in packet))
+    content = time_content(now)
+    packet = build_packet(a.pack, content, a.content_size)
+    print(f"目标时间 {now:%Y-%m-%d %H:%M:%S} (星期 {content[9]})")
+    print(f"包 ({a.pack}, {len(packet)} B): " + " ".join(f"{b:02x}" for b in packet))
     print()
 
     dev = Device()
     layouts = a.only or sorted(LAYOUTS)
     for name in layouts:
         cmd, at = LAYOUTS[name]
+        if a.record is not None:
+            cmd, at = a.record, (a.at if a.at is not None else at)
+            name = f"0x{cmd:02X}@{at}"
+        elif a.at is not None:
+            at = a.at
+            name = f"{name}@{at}"
         sub = 0 if cmd == 0x05 else None
         payload = record(cmd, packet, at=at, sub=sub)
         t0 = time.time()
@@ -169,7 +199,7 @@ def main(argv: list[str]) -> int:
         replies = dev.drain(a.pause)
         frame = replies[0] if replies else b""
         aa = frame[3] if len(frame) > 3 else None
-        print(f"{name:5s} record 0x{cmd:02X} @payload[{at}]  write={'ok' if ok else 'FAIL'}  "
+        print(f"{name:12s} record 0x{cmd:02X} @payload[{at}]  write={'ok' if ok else 'FAIL'}  "
               f"reply={' '.join(f'{b:02x}' for b in frame) if frame else '(none)'}  "
               f"module_0xAA={'YES' if aa == 1 else 'no'}")
         time.sleep(0.3)
