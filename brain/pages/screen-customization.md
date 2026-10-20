@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T16:40:41"
+updated: "2026-10-20T16:59:49"
 ---
 
 <!-- compiled_truth -->
@@ -209,4 +209,10 @@ updated: "2026-10-20T16:40:41"
   kind: evidence
   summary: "2026-10-20 校时问题的真正根因：模块时钟一直忠实显示【时间源设备】的时间。手机蓝牙配对后屏幕=00:23 而电脑=00:17 ⇒ 手机快 6 分钟；最初恒定 +7 分钟也是同一个时间源(很可能就是这台手机)的历史设定值 ⇒ 键盘/固件都没错，错在时间源。模块的 BLE 身份：名称 YD-Y65S-5.0，地址 FF:26:00:0F:0A:56，BLE VID/PID 0204:B35A；Windows 侧可见 GATT 服务 0x1800(GAP)/0x1801(GATT)/0x180A(Device Info)/0x180F(Battery)/0xF200(厂商)，未见标准 0x1805(CTS) ⇒ 手机写时间很可能走厂商服务 0xF200。注意 bleak 在 Windows 上无法连接『已连接不广播』的设备(BleakDeviceNotFoundError)，要直连需走 WinRT BluetoothLEDevice.from_bluetooth_address_async。"
   source: "omp-host 真机 + Windows PnP/bleak 2026-10-20"
+  affects: [screen-customization, module-link]
+
+- time: 2026-10-20T16:59:49
+  kind: evidence
+  summary: "2026-10-20 拿到模块 BLE 完整 GATT 画像(WinRT 直连, bleak 连不上已连接设备)：设备名 YD-Y65S-5.0，地址 FF:26:00:0F:0A:56，BLE VID/PID 0204:B35A，厂商 Sinowealth ltd.。服务/特征：0x1800(0x2A00 名字/0x2A01 appearance=0x03C1/0x2A04 连接参数)、0x1812 HID(被 Windows 组策略独占)、0x180F(0x2A19 电量=100)、0x180A(0x2A29 厂商名/0x2A24 模型=1.0.0/0x2A25 序列/0x2A27,0x2A26,0x2A28 版本/0x2A50 IEEE)、0xF200 厂商服务只有 0xF202(9 B，只写或通知，回读恒 0) ⇒ 手机写时间就是写 0xF202。已用四种布局各写一次做扫描：odm-bcd(5A 01 5A + BCD yy mm dd hh mi ss)、odm-dec(同前但十进制)、bcd(BCD 7 字段 + 00 00)、epoch(4 B LE + 5 个 0)，对应屏幕时间 00:59/01:00/01:01/01:02，由屏幕读数反推格式。工具：tools/cts_sync.py(--read/--write/--sweep/--all)。"
+  source: "omp-host 真机 WinRT 2026-10-20"
   affects: [screen-customization, module-link]
