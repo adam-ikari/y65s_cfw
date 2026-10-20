@@ -121,6 +121,12 @@ def build_packet(pack: str, content: bytes, content_size: int) -> bytes:
         return bytes(content)
     if pack == "cmdprefix":
         return bytes([CMD_TEMPORARY_DATA]) + bytes(content)
+    if pack == "tagdup":
+        # 5A 5A yy mm dd hh mi ss wd  (tag repeated, no length byte)
+        return bytes([0x5A, 0x5A]) + bytes(content[3:])
+    if pack == "wdfirst":
+        # weekday first, then the tag triple
+        return bytes([content[9]]) + bytes(content[:9])
     if pack == "dotmatrix":
         c = bytearray(content)
         c[0] = 0x3A
@@ -192,8 +198,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--recipe", choices=sorted(RECIPES), action="append",
                     help="named content/channel recipes (see RECIPES)")
     ap.add_argument("--spec", action="append",
-                    help="ad-hoc recipe 'rec:sub:pack' (e.g. 0x05:2:raw, 0x03:1:odm, "
-                         "0x04::raw); sub is the record 0x03/0x05 sub-dispatch")
+                    help="ad-hoc recipe 'rec:sub:pack' or "
+                         "'rec:sub:pack:encode:weekday:nolast' (e.g. "
+                         "0x05:2:raw, 0x03:1:odm:bcd:mon0:1, 0x04::raw); "
+                         "sub is the record 0x03/0x05 sub-dispatch, encode is "
+                         "dec|bcd, weekday is sun0|mon0, nolast is 0|1")
     ap.add_argument("--distinct", action="store_true",
                     help="give every recipe its own time (base + index minutes) "
                          "so the screen shows which one landed")
@@ -216,6 +225,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--restore", action="store_true",
                     help="send the built-in profile (flash 0x9983) unchanged via "
                          "record 0x04 -- puts the LED/profile fields back")
+    ap.add_argument("--overlay-bare", action="store_true",
+                    help="overlay only the 7 time bytes (no 5A 01 5A tag) when "
+                         "using --overlay")
+    ap.add_argument("--pace", type=int, default=1,
+                    help="send each candidate N times (the vendor upload only "
+                         "lands when the host keeps a cadence)")
+    ap.add_argument("--gap", type=float, default=0.12,
+                    help="seconds between the repeated sends")
     a = ap.parse_args(argv)
 
     if a.time:
@@ -247,6 +264,8 @@ def main(argv: list[str]) -> int:
             when = now + dt.timedelta(minutes=k)
             body = bytearray(profile)
             content = time_content(when, a.encode, a.weekday)
+            if a.overlay_bare:
+                content = content[3:]          # drop the 5A 01 5A tag
             body[k:k + len(content)] = content
             payload = record(0x04, bytes(body), at=7)
             ok = dev.send(payload)
@@ -257,40 +276,48 @@ def main(argv: list[str]) -> int:
             time.sleep(0.2)
         return 0
 
-    jobs: list[tuple[str, int, int, int | None, int | None, str]] = []
+    jobs: list[tuple] = []
     for name in (a.recipe or a.only or []):
         if name in RECIPES:
             r = RECIPES[name]
             jobs.append((name, r["rec"], r["at"], r.get("sub"), r.get("sub_at"),
-                         a.pack if a.pack != "odm" else r.get("pack", "odm")))
+                         a.pack if a.pack != "odm" else r.get("pack", "odm"),
+                         a.encode, a.weekday, a.no_last))
         else:
             cmd, at = LAYOUTS[name]
             jobs.append((name, cmd, at, (0, 4) if cmd == 0x05 else (None, None), None,
-                         a.pack))
+                         a.pack, a.encode, a.weekday, a.no_last))
     for spec in a.spec or []:
         parts = spec.split(":")
         rec = int(parts[0], 0)
         sub = int(parts[1], 0) if len(parts) > 1 and parts[1] else None
         pack = parts[2] if len(parts) > 2 and parts[2] else a.pack
+        enc = parts[3] if len(parts) > 3 and parts[3] else a.encode
+        wday = parts[4] if len(parts) > 4 and parts[4] else a.weekday
+        nolast = bool(int(parts[5])) if len(parts) > 5 and parts[5] else a.no_last
         sub_at = 1 if rec == 0x03 else (4 if rec == 0x05 else None)
-        jobs.append((spec, rec, 7, sub, sub_at, pack))
+        jobs.append((spec, rec, 7, sub, sub_at, pack, enc, wday, nolast))
 
-    for index, (name, cmd, at, sub, sub_at, pack) in enumerate(jobs):
+    for index, (name, cmd, at, sub, sub_at, pack, enc, wday, nolast) in enumerate(jobs):
         when = now + dt.timedelta(minutes=index) if a.distinct else now
-        content = time_content(when, a.encode, a.weekday)
+        content = time_content(when, enc, wday)
         packet = build_packet(pack, content, a.content_size)
-        if a.no_last and len(packet) >= 8 and packet[0] == 0xAA:
+        if nolast and len(packet) >= 8 and packet[0] == 0xAA:
             packet = packet[:6] + bytes([0x00]) + packet[7:]
         payload = record(cmd, packet, at=at, sub=sub, sub_at=sub_at)
-        ok = dev.send(payload)
+        ok = True
+        for rep in range(max(1, a.pace)):
+            ok = dev.send(payload) and ok
+            if rep + 1 < max(1, a.pace):
+                time.sleep(a.gap)
         replies = dev.drain(a.pause)
         frame = replies[0] if replies else b""
         aa = frame[3] if len(frame) > 3 else None
-        print(f"{name:12s} rec 0x{cmd:02X} sub={sub} @payload[{at}] pack={pack:9s} "
-              f"time={when:%H:%M:%S}  write={'ok' if ok else 'FAIL'}  "
+        print(f"{name:26s} rec 0x{cmd:02X} sub={sub} pack={pack:9s} enc={enc:3s} "
+              f"wd={wday:4s} last={'0' if nolast else '1'} time={when:%H:%M:%S}  "
+              f"write={'ok' if ok else 'FAIL'}  "
               f"reply={' '.join(f'{b:02x}' for b in frame) if frame else '(none)'}  "
               f"module_0xAA={'YES' if aa == 1 else 'no'}")
-        print(f"             bytes: " + " ".join(f"{b:02x}" for b in packet))
         time.sleep(0.3)
     return 0
 
