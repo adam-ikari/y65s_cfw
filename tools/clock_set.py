@@ -129,11 +129,18 @@ def build_packet(pack: str, content: bytes, content_size: int) -> bytes:
     return odm_packet(CMD_TEMPORARY_DATA, content, size)
 
 
-def time_content(now: dt.datetime) -> bytes:
-    """5A 01 5A yy mm dd hh mi ss wd  (weekday 0 = Sunday)."""
-    wd = (now.weekday() + 1) % 7
-    return bytes([0x5A, 0x01, 0x5A, now.year % 100, now.month, now.day,
-                  now.hour, now.minute, now.second, wd])
+def time_content(now: dt.datetime, encode: str = "dec", weekday: str = "sun0") -> bytes:
+    """5A 01 5A yy mm dd hh mi ss wd  (weekday 0 = Sunday).
+
+    `encode` selects plain decimal (what the ODM frontend sends) or BCD,
+    `weekday` selects 0 = Sunday (ODM) or 0 = Monday (C style).
+    """
+    wd = (now.weekday() + 1) % 7 if weekday == "sun0" else now.weekday()
+    fields = [now.year % 100, now.month, now.day,
+              now.hour, now.minute, now.second]
+    if encode == "bcd":
+        fields = [(v // 10) << 4 | (v % 10) for v in fields]
+    return bytes([0x5A, 0x01, 0x5A] + fields + [wd])
 
 
 def record(cmd: int, data: bytes = b"", at: int = 0, sub: int | None = None,
@@ -172,6 +179,9 @@ RECIPES: dict[str, dict] = {
     "04dot":   {"rec": 0x04, "at": 7, "pack": "dotmatrix"},
     "04cmd":   {"rec": 0x04, "at": 7, "pack": "cmdprefix"},
     "05cmd":   {"rec": 0x05, "at": 7, "sub": 0, "sub_at": 4, "pack": "cmdprefix"},
+    "04odm":   {"rec": 0x04, "at": 7, "pack": "odm"},
+    "05odm":   {"rec": 0x05, "at": 7, "sub": 0, "sub_at": 4, "pack": "odm"},
+    "03s1odm": {"rec": 0x03, "at": 7, "sub": 1, "sub_at": 1, "pack": "odm"},
 }
 
 
@@ -189,6 +199,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--time", help="target time 'YYYY-MM-DD HH:MM:SS' (default: now)")
     ap.add_argument("--pause", type=float, default=2.0)
     ap.add_argument("--content-size", type=lambda s: int(s, 0), default=CONTENT_SIZE)
+    ap.add_argument("--encode", choices=["dec", "bcd"], default="dec",
+                    help="decimal (ODM) or BCD time fields")
+    ap.add_argument("--weekday", choices=["sun0", "mon0"], default="sun0",
+                    help="weekday base: 0 = Sunday (ODM) or 0 = Monday")
+    ap.add_argument("--no-last", action="store_true",
+                    help="clear the isLast flag in the ODM header")
     a = ap.parse_args(argv)
 
     if a.time:
@@ -196,8 +212,10 @@ def main(argv: list[str]) -> int:
     else:
         now = dt.datetime.now()
 
-    content = time_content(now)
+    content = time_content(now, a.encode, a.weekday)
     packet = build_packet(a.pack, content, a.content_size)
+    if a.no_last and len(packet) >= 8 and packet[0] == 0xAA:
+        packet = packet[:6] + bytes([0x00]) + packet[7:]
     print(f"目标时间 {now:%Y-%m-%d %H:%M:%S} (星期 {content[9]})")
     print(f"包 ({a.pack}, {len(packet)} B): " + " ".join(f"{b:02x}" for b in packet))
     print()
@@ -215,7 +233,10 @@ def main(argv: list[str]) -> int:
             sub, sub_at = (0, 4) if cmd == 0x05 else (None, None)
             pack = a.pack
         when = now + dt.timedelta(minutes=index) if a.distinct else now
-        packet = build_packet(pack, time_content(when), a.content_size)
+        content = time_content(when, a.encode, a.weekday)
+        packet = build_packet(pack, content, a.content_size)
+        if a.no_last and len(packet) >= 8 and packet[0] == 0xAA:
+            packet = packet[:6] + bytes([0x00]) + packet[7:]
         payload = record(cmd, packet, at=at, sub=sub, sub_at=sub_at)
         ok = dev.send(payload)
         replies = dev.drain(a.pause)

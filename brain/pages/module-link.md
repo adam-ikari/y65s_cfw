@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T12:37:12"
+updated: "2026-10-20T12:56:38"
 ---
 
 <!-- compiled_truth -->
@@ -313,3 +313,15 @@ updated: "2026-10-20T12:37:12"
   summary: "2026-10-20 通道语义定案：主机侧的 ODM 风格包（时间 cmd 0x34 / TFT 0x50 / 内置图 0x51）走的是 0x81 大块帧（记录 0x0B/0x0C/0x0D），块内布局 [09 reportID][记录命令][ODM 包…]，即包头在 payload[1]；记录 0x04（128 B 窗，模块 cmd 0x52 = 设备 profile）与 0x05（512 B 窗，模块 cmd 0x6E+sub）不是 ODM 通道，别再往里面塞 ODM 包。应答帧第 4 字节=1 ⇔ 模块回过 0xAA（bulk 记录时可用作 oracle），第 5/6 字节回显 payload[3]（我们包里的 contentSize）。"
   source: "omp-host 真机 2026-10-20"
   affects: [module-link, screen-customization]
+
+- time: 2026-10-20T12:55:01
+  kind: reversal
+  summary: "2026-10-20 自我更正两条：(1) 应答帧第 4 字节=1（模块回过 0xAA）只在 0x81 大块帧记录上可当 oracle，对 0x04/0x05 等字节流记录恒为 0，不能用它判断模块是否执行了内容；把 ODM 包塞进 0x81 大块帧会��模块进入等待流数据状态（屏幕时钟冻住），说明 0x81 是喂原始流的通道、不是 ODM 包通道，必须重启（ISP 往返）才能恢复。(2) 记录 0x04 的窗口改写规则是『若 payload[17]==1 则 payload[18]=0x13』（原 brain 写成 payload[8]/payload[17]，已更正）。主机→模块可用通道只有：0x52(128B, 记录0x04)、0x5E/0x62/0x66/0x6A(512B, 记录0x03 子分发1..4)、0x6E..0x75(512B, 记录0x05)、0x81(520B 原始流, 记录0x0B/0x0C/0x0D)。"
+  source: "omp-host 真机 2026-10-20 + fw_full.lst 复核 0x7E5B/0xBADB"
+  affects: [module-link, screen-customization]
+
+- time: 2026-10-20T12:56:38
+  kind: evidence
+  summary: "2026-10-20 补注：上一条 reversal 的 summary 里『会??模块』两个字符是写坏的花括号，应读作『会让模块』；本条给出该句的正确表述。"
+  source: brain CLI 2026-10-20
+  affects: [module-link]

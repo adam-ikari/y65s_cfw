@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [odm protocol screen hid]
 created: "2026-10-19T22:46:33"
-updated: "2026-10-20T07:54:00"
+updated: "2026-10-20T12:55:01"
 ---
 
 <!-- compiled_truth -->
@@ -99,3 +99,9 @@ YUNZII IF75 `0x38A6` **135×240**；`hfd`（前行者）**240×135**、`builtInC
   summary: "2026-10-20 复核厂商前端 JS（重新下载 build/odm/），把 TFT 上传包头/分包/延时表/像素格式逐字节定死"
   source: "build/odm/layout-classic-Bylu1MNp.js (xn/mt/nu/zu/Hu/Gu/Wu) + tft-DGEkbwnS.js"
   affects: [driveall-protocol]
+
+- time: 2026-10-20T12:55:01
+  kind: evidence
+  summary: "2026-10-20 补全 ODM 命令表（从 build/odm/ 前端逐条抠出）：48 SET_KEYBOARD_CUSTOM_FUNCTION_ON / 49 OFF / 50 GET_LED_DATA / 51 GET_ALL_LIGHTS_RGB / 52 SET_TEMPORARY_COMMAND_DATA / 53 SET_MUSIC_DATA / 54 CLEAR_LED_DATA / 55 GET_ALL_LIGHTS_RGB_24G / 59 GET_ALL_LIGHTS_RGB_24G_64_BYTE / 60 SET_MUSIC_DATA_24G_64_BYTE / 61 GET_DOT_MATRIX_CONFIG / 64 SET_LED_BOOT_ANIMATION / 65 SET_LED_USER_ANIMATION / 66 SET_LED_DATA / 79 SET_FLASH_DOWNLOAD / 80 SET_TFT_USER_ANIMATION / 81 SET_TFT_BUILT_IN_INDEX / 96 GET_MAGNETIC_AXIS_KEY_STATUS / 100-106 校准与仿真 / 128-134 OTA / 250-252 通知。校时=TFT 用 cmd 52 且 content 首字节 0x5A，点阵屏同一命令但首字节 0x3A。模块侧命令号 = ODM 编号 + 0x1E（0x52↔0x34、0x54↔0x36、0x5E/0x5F↔0x40/0x41、0x6E/0x6F↔0x50/0x51 六处互证）。"
+  source: "build/odm/ 前端 2026-10-20 复核"
+  affects: [driveall-protocol, module-link, screen-customization]
