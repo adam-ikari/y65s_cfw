@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-21T02:46:37"
+updated: "2026-10-21T03:23:28"
 ---
 
 
@@ -138,3 +138,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   summary: "2026-10-21 路线确定：自制固件 = 【原厂固件 + 字节级补丁】，不是从零重写。新工具 tool/ 用 Tauri v2 做（Windows/Linux/macOS 一套）：crates/core(协议+hidapi 跨平台 HID+自己实现 Sinowealth ISP+补丁框架，14+ 单测) + src-tauri(命令层) + webui(React+Vite+Tailwind)。功能：状态/灯效/校时/推屏/固件(备份·补丁·刷写)/恢复默认/按键说明。补丁模型 crates/core/src/patch.rs：每条补丁带 expect(必须匹配的原字节)+replace+地址，对不上就拒绝打，避免打到错的地方。已知待补两处：(1) 音量上下限与系统不一致 —— 厂商 app 用 IAudioEndpointVolume 读 0.0~1.0 再乘 100.0 下发(Y95 0x4705c5 fmull 0x610a20 / K65 0x4742d5 fmull 0x616f80，两个 app 一致)，8051 只是原样转发(profile 0x31 -> xdata[0x0F12] -> 设置包 0x0DBB，固件 0x5557 拷贝、0x5594 起按 cmd 0x52 逐字节发 128B，源 0x0D8A+计数)，无任何限幅；⇒ 修法：下发前换算 SoC 量程，或让 0x5557 那处改为写常量(不发显示音量)。(2) 校时包落点：11B 载荷已知([date][cpu][x]+年月日时分秒星期)，记录/偏移未钉死，工具里有逐通道不同分钟数的扫描。"
   source: "2026-10-21 工具实现 + 双 app 反汇编"
   affects: [custom-firmware-path, module-link, screen-customization]
+
+- time: 2026-10-21T03:23:28
+  kind: decision
+  summary: "2026-10-21 用户决定：工具可以做开机自启动 + 常驻后台 ⇒ 校时按『常驻持续同步』做（模块 RTC 会漂 ~1.5%，一次性对时几天后又不准，常驻定时重发才能真正修好）；同理，工具在跑的时候可以持续把系统音量推给键盘，屏幕上���音量就与系统一致 ⇒ 音量显示分两层修：工具在跑=持续推送正确值；工具不在跑=固件补丁 no-volume-send 让 8051 不发音量（屏幕上不出现不准的值）。Tauri v2 侧对应能力：tauri-plugin-autostart（Win 注册表 Run / Linux XDG autostart / macOS LaunchAgent）+ 托盘常驻（无窗口或最小化到托盘）。"
+  source: "2026-10-21 用户决定"
+  affects: [custom-firmware-path, no-write-policy, screen-customization]
