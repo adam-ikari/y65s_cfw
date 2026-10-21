@@ -13,15 +13,15 @@ use crate::error::{Result, Y65sError};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Patch {
     /// Stable identifier, used in the UI and in the brain notes.
-    pub id: String,
+    pub id: &'static str,
     /// What the patch does, in the operator's words.
-    pub description: String,
+    pub description: &'static str,
     /// Address in the keyboard's flash.
     pub address: u32,
     /// The bytes that must be there for the patch to apply.
-    pub expect: Vec<u8>,
+    pub expect: &'static [u8],
     /// The bytes to write instead.
-    pub replace: Vec<u8>,
+    pub replace: &'static [u8],
 }
 
 impl Patch {
@@ -59,13 +59,34 @@ impl Patch {
 /// Each entry needs the address confirmed against the dump it targets; the
 /// `expect` bytes are the safety net that keeps a stale patch from landing on
 /// the wrong code.
-pub const PATCHES: &[Patch] = &[];
+pub const PATCHES: &[Patch] = &[
+    Patch {
+        id: "no-volume-display",
+        description: "不再把音量显示到屏幕：8051 侧把 profile 的音量字节(0x31) \
+                       转发给屏幕 SoC 的那一次拷贝，改成写 0xFF（超出 0~100 量程，\
+                       SoC 无法显示音量条）。没有我们的软件在跑时，屏幕上就不会出现\
+                       与系统不一致的音量；需要显示时由我们自己的推帧负责。",
+        address: 0x5557,
+        // 90 0F 12 E0 90 0D BB F0
+        //   MOV  DPTR,#0x0F12   ; 取 profile 的音量字段
+        //   MOVX A,@DPTR
+        //   MOV  DPTR,#0x0DBB   ; 设置包里的音量位置
+        //   MOVX @DPTR,A
+        expect: &[0x90, 0x0F, 0x12, 0xE0, 0x90, 0x0D, 0xBB, 0xF0],
+        // 90 0D BB 74 FF F0 00 00
+        //   MOV  DPTR,#0x0DBB
+        //   MOV  A,#0xFF
+        //   MOVX @DPTR,A
+        //   NOP NOP
+        replace: &[0x90, 0x0D, 0xBB, 0x74, 0xFF, 0xF0, 0x00, 0x00],
+    },
+];
 
 /// Result of checking a patch set against an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatchReport {
     /// The patch that was checked.
-    pub id: String,
+    pub id: &'static str,
     /// Whether it applies to this image.
     pub applies: bool,
 }
@@ -75,7 +96,7 @@ pub fn check(image: &[u8], patches: &[Patch]) -> Vec<PatchReport> {
     patches
         .iter()
         .map(|p| PatchReport {
-            id: p.id.clone(),
+            id: p.id,
             applies: p.applies_to(image),
         })
         .collect()
@@ -96,11 +117,11 @@ mod tests {
 
     fn patch() -> Patch {
         Patch {
-            id: "test".into(),
-            description: "example".into(),
+            id: "test",
+            description: "example",
             address: 0x1000,
-            expect: vec![0xAA, 0xBB],
-            replace: vec![0xCC],
+            expect: &[0xAA, 0xBB],
+            replace: &[0xCC],
         }
     }
 
@@ -140,5 +161,46 @@ mod tests {
         let reports = check(&vec![0u8; 0x2000], &[patch()]);
         assert_eq!(reports.len(), 1);
         assert!(!reports[0].applies);
+    }
+
+    /// The shipped patches must match the firmware dump they were written
+    /// against, otherwise we would be patching the wrong bytes.
+    #[test]
+    fn shipped_patches_match_the_dumps() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../firmware");
+        let mut checked = 0;
+        for dump in ["YD-Y65S_full.bin", "backups/YD-Y65S_full_20261019.bin"] {
+            let path = repo.join(dump);
+            let Ok(image) = std::fs::read(&path) else {
+                continue;
+            };
+            for p in PATCHES {
+                assert!(
+                    p.applies_to(&image),
+                    "补丁 {} 对不上 {dump}",
+                    p.id
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "没有找到任何固件 dump，补丁无法被验证");
+    }
+
+    /// Applying the shipped patch must change exactly the expected bytes.
+    #[test]
+    fn shipped_patch_rewrites_only_the_volume_field() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../firmware/YD-Y65S_full.bin");
+        let Ok(image) = std::fs::read(&path) else { return };
+        let p = &PATCHES[0];
+        let out = p.apply(&image).unwrap();
+        assert_ne!(out, image);
+        // everything outside the patch must be untouched
+        for i in 0..image.len() {
+            if i < p.address as usize || i >= p.address as usize + p.replace.len() {
+                assert_eq!(out[i], image[i], "补丁越界改了 0x{i:04X}");
+            }
+        }
     }
 }
