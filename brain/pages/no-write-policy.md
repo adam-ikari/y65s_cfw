@@ -4,7 +4,7 @@ title: "写入禁令 (No-Write Policy)"
 category: decision
 status: active
 created: "2026-10-19T16:46:16"
-updated: "2026-10-21T01:27:09"
+updated: "2026-10-21T02:54:27"
 ---
 
 <!-- compiled_truth -->
@@ -62,3 +62,9 @@ updated: "2026-10-21T01:27:09"
   summary: "2026-10-21 重要区分：两个官方 app 的 profile 不能混用。Y95 版(Y95 Keyboard Setup 20240228) 的 Dev/kb/Screen/KB.ini: VID=258a PID=019D、siScreen=240,135、MaxScreenFrame=40、ShowScreen=1、RGBScreen=1 ⇒ 与本机屏幕几何一致(我们上传 240x135 纯红成功、用户目视确认)，【可以用它写设置】。K65 版(K65 Keyboard Setup 20241026) 的 Dev/kb/KB.ini: siScreen=135,240、MaxScreenFrame=80、另有 K65 专属键位 ⇒ 【是另一块屏/另一套键位，写进去会让屏幕几何与键位全错，危险】。两个 app 的 VID/PID 都是 258a:019d，app 自己分不清机型，只按自己 profile 写。固件升级按钮同理危险(按 profile 下发对应固件)，本机 YD-Y65S 只能靠 sinowisp 写回 firmware/backups/YD-Y65S_full_20261019.bin 这份 64 KiB dump(2026-10-20 已验证：写后整片读回与备份逐字节一致)。K65 版唯一有价值之处是它的【每秒对时循环】(SendTimeOnOpenKB=1)，而该循环走的是 HID 运行期命令(不写 flash)，所以只让它对时、不点保存/升级是安全的。"
   source: "K65/Y95 两个官方包对比 2026-10-21"
   affects: [no-write-policy, screen-customization, module-link]
+
+- time: 2026-10-21T02:54:27
+  kind: decision
+  summary: "2026-10-21 用户定的音量策略：没有我们的软件在跑时，屏幕上不要显示音量（那个值本来就不准，显示只会误导）⇒ 做固件补丁 no-volume-display：8051 在 0x5557 把 profile 音量字段(0x31)转发进设置包(0x0DBB)的那次拷贝(90 0F 12 E0 90 0D BB F0)改成写常量 0xFF(90 0D BB 74 FF F0 00 00)，超出 0~100 量程 ⇒ SoC 显示不出音量条。补丁 expect 字节取自 firmware/YD-Y65S_full.bin 与 backups/YD-Y65S_full_20261019.bin(两处一致)，由单测 shipped_patches_match_the_dumps / shipped_patch_rewrites_only_the_volume_field 校验(20 项单测全绿)。需要显示音量时改由我们自己的推帧负责。"
+  source: "2026-10-21 固件补丁设计"
+  affects: [no-write-policy, custom-firmware-path, module-link]
