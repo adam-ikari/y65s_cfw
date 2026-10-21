@@ -80,6 +80,15 @@ pub const PATCHES: &[Patch] = &[
         //   NOP NOP
         replace: &[0x90, 0x0D, 0xBB, 0x74, 0xFF, 0xF0, 0x00, 0x00],
     },
+    Patch {
+        id: "no-volume-display-zero",
+        description: "同 no-volume-display，但哨兵值用 0x00 而不是 0xFF。\
+                      哪个值让 SoC 真正不画音量条，刷一次看屏幕即可定。",
+        address: 0x5557,
+        expect: &[0x90, 0x0F, 0x12, 0xE0, 0x90, 0x0D, 0xBB, 0xF0],
+        // 90 0D BB 74 00 F0 00 00
+        replace: &[0x90, 0x0D, 0xBB, 0x74, 0x00, 0xF0, 0x00, 0x00],
+    },
 ];
 
 /// Result of checking a patch set against an image.
@@ -109,6 +118,18 @@ pub fn apply_all(image: &[u8], patches: &[Patch]) -> Result<Vec<u8>> {
         out = p.apply(&out)?;
     }
     Ok(out)
+}
+
+/// Pick patches by id; unknown ids are an error.
+pub fn select(ids: &[String]) -> Result<Vec<&'static Patch>> {
+    ids.iter()
+        .map(|id| {
+            PATCHES
+                .iter()
+                .find(|p| p.id == id)
+                .ok_or_else(|| Y65sError::BadInput(format!("没有这个补丁：{id}")))
+        })
+        .collect()
 }
 
 #[cfg(test)]

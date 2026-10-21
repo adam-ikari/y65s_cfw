@@ -6,7 +6,6 @@
 
 pub mod error;
 pub mod hid;
-pub mod image;
 pub mod isp;
 pub mod keys;
 pub mod patch;
@@ -74,34 +73,6 @@ impl Keyboard {
         prof[0x7E..0x80].copy_from_slice(&PROFILE_MARKER);
         self.send_record(&build_record(record::PROFILE, &prof, DATA_OFF, None))?;
         Ok(prof)
-    }
-
-    /// Push one screen frame (module command 0x81).
-    ///
-    /// The module renders a whole frame and ignores data that arrives without
-    /// the vendor's timing, so the delays are part of the protocol.
-    pub fn push_frame(&self, pixels: &[u8], timing: ScreenTiming) -> Result<usize> {
-        let blocks = pixels.len().div_ceil(SCREEN_BLOCK);
-        // 0x0D SetGIFParam(flag=1, gif=0, nframes, delay)
-        let start = [0x01u8, 0x00, 0x00, 0x00, 0x00, 0x00];
-        self.send_record(&build_record(record::GIF_PARAM, &start, DATA_OFF, None))?;
-        std::thread::sleep(Duration::from_millis(timing.after_start_ms));
-        for seq in 0..blocks {
-            let chunk = &pixels[seq * SCREEN_BLOCK..((seq + 1) * SCREEN_BLOCK).min(pixels.len())];
-            let mut page = vec![0u8; SCREEN_BLOCK];
-            page[..chunk.len()].copy_from_slice(chunk);
-            let mut payload = Vec::with_capacity(4 + SCREEN_BLOCK);
-            payload.extend_from_slice(&(0u16).to_le_bytes()); // page
-            payload.extend_from_slice(&(seq as u16).to_le_bytes()); // sequence
-            payload.extend_from_slice(&page);
-            self.send_record(&build_record(record::ACCESS_PAGE, &payload, DATA_OFF, None))?;
-            std::thread::sleep(Duration::from_millis(timing.per_page_ms));
-        }
-        std::thread::sleep(Duration::from_millis(timing.before_end_ms));
-        let end = [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00];
-        self.send_record(&build_record(record::GIF_END, &end, DATA_OFF, None))?;
-        std::thread::sleep(Duration::from_millis(timing.after_end_ms));
-        Ok(blocks)
     }
 
     /// Set the clock, trying every route we know.

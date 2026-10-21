@@ -4,7 +4,6 @@ import {
   Cpu,
   Download,
   Factory,
-  Image as ImageIcon,
   Keyboard,
   Lightbulb,
   RefreshCw,
@@ -18,7 +17,6 @@ const TABS = [
   { id: "status", label: "状态", icon: Usb },
   { id: "light", label: "灯效", icon: Lightbulb },
   { id: "clock", label: "校时", icon: Clock },
-  { id: "screen", label: "屏幕", icon: ImageIcon },
   { id: "firmware", label: "固件", icon: Cpu },
   { id: "keys", label: "按键说明", icon: Keyboard },
 ] as const;
@@ -191,25 +189,6 @@ export default function App() {
           </section>
         )}
 
-        {tab === "screen" && (
-          <section className="space-y-4">
-            <Card title="推一帧到屏幕（240×135，RGB565 大端）">
-              <p className="mb-3 text-xs leading-5 text-white/50">
-                厂商的传图协议是 0x0D SetGIFParam → 0x0C AccessData_Page → 0x0D 收尾，
-                中间必须按厂商的节拍（120/50/50/500 ms），否则模块收到数据也不渲染。
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Btn onClick={() => guard("推屏", () => api.pushScreen("build/frame.bmp"))}>
-                  推 build/frame.bmp
-                </Btn>
-                <Btn onClick={() => guard("填充", () => api.fillScreen(220, 40, 40))}>
-                  填成红色
-                </Btn>
-              </div>
-            </Card>
-          </section>
-        )}
-
         {tab === "firmware" && (
           <section className="space-y-4">
             <Card title="键盘 flash（ISP）">
@@ -287,7 +266,13 @@ export default function App() {
                 </Btn>
                 <Btn
                   onClick={() =>
-                    guard("生成补丁镜像", () => api.buildPatched(dump, "build/YD-Y65S_patched.bin"))
+                    guard("生成补丁镜像", () =>
+                      api.buildPatched(
+                        dump,
+                        "build/YD-Y65S_patched.bin",
+                        Object.keys(patchState).filter((id) => patchState[id]),
+                      ),
+                    )
                   }
                 >
                   生成补丁镜像

@@ -18,8 +18,6 @@ pub fn run() {
             commands::write_profile,
             commands::factory_restore,
             commands::set_clock,
-            commands::push_screen,
-            commands::fill_screen,
             commands::flash_read,
             commands::flash_write,
             commands::key_combos,

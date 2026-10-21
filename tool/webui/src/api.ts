@@ -82,13 +82,6 @@ export const factoryRestore = (dump: string) => invoke<ProfileView>("factory_res
 /** Push the PC clock into the module. */
 export const setClock = (sweep: boolean) => invoke<ClockReport>("set_clock", { sweep });
 
-/** Push a BMP onto the screen. */
-export const pushScreen = (path: string) => invoke<number>("push_screen", { path });
-
-/** Fill the screen with one colour. */
-export const fillScreen = (r: number, g: number, b: number) =>
-  invoke<number>("fill_screen", { r, g, b });
-
 /** Read the whole flash of the keyboard. */
 export const flashRead = (path: string) => invoke<string>("flash_read", { path });
 
@@ -123,5 +116,5 @@ export const listPatches = () => invoke<Patch[]>("list_patches");
 export const checkPatches = (dump: string) => invoke<PatchReport[]>("check_patches", { dump });
 
 /** Build a patched firmware image from a dump. */
-export const buildPatched = (dump: string, out: string) =>
-  invoke<string>("build_patched", { dump, out });
+export const buildPatched = (dump: string, out: string, ids: string[]) =>
+  invoke<string>("build_patched", { dump, out, ids });
