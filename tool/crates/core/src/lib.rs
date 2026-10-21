@@ -5,6 +5,7 @@
 //! from a CLI or from tests.
 
 pub mod error;
+pub mod flash;
 pub mod hid;
 pub mod isp;
 pub mod keys;

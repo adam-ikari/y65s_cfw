@@ -1,0 +1,15 @@
+[package]
+name = "y65s-cli"
+description = "Command line front end for the YD-Y65S toolchain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "y65s"
+path = "src/main.rs"
+
+[dependencies]
+y65s-core = { workspace = true }

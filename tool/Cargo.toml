@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "src-tauri"]
+members = ["crates/core", "crates/cli", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -26,6 +26,9 @@ hidapi = { version = "2.6", default-features = false, features = [
     # strictly need) work even while the kernel hid driver is bound.
     "linux-static-hidraw",
 ] }
+
+# md5 for the flash digests we print (matches the python tools)
+md-5 = "0.10"
 
 # civil date and time without a system clock dependency
 time = { version = "0.3", features = ["formatting", "local-offset"] }

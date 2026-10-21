@@ -39,6 +39,7 @@ export default function App() {
   const [dump, setDump] = useState(DEFAULT_DUMP);
   const [patches, setPatches] = useState<api.Patch[]>([]);
   const [patchState, setPatchState] = useState<Record<string, boolean>>({});
+  const [fixSteps, setFixSteps] = useState<string[]>([]);
 
   const say = (line: string) =>
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 200));
@@ -191,6 +192,45 @@ export default function App() {
 
         {tab === "firmware" && (
           <section className="space-y-4">
+            <Card title="一键修复音量条">
+              <p className="mb-3 text-xs leading-5 text-white/50">
+                屏幕上那条音量条和系统音量对不上（甚至显示 100%）：厂商 app 把
+                乘以 100 的系统音量原样转发给屏幕，8051 零限幅地照抄。
+                这里的修复只改两处字节级补丁，主机侧的音量键照常工作，
+                <b className="text-white/70">你的配置、灯效、键位都不动</b>。
+              </p>
+              <p className="mb-3 text-xs leading-5 text-white/40">
+                过程：读出整片 flash → 存一份备份 → 打补丁 → 擦除写入 →
+                读回逐字节校验。写入过程中不要拔线。
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Btn
+                  onClick={async () => {
+                    const r = await guard("一键修复音量条", () => api.fixVolumeBar(null));
+                    if (r) {
+                      const rep = r as api.FixReport;
+                      setFixSteps(rep.steps);
+                      rep.steps.forEach((s) => say(s));
+                      say(
+                        rep.already_fixed
+                          ? "固件里已经有修复，没有写入任何东西"
+                          : `已应用 ${rep.applied.join(" + ")}，校验${rep.verified ? "通过" : "未通过"}`,
+                      );
+                    }
+                  }}
+                >
+                  <Cpu size={12} /> 一键修复音量条
+                </Btn>
+                {fixSteps.length > 0 && (
+                  <span className="text-xs text-emerald-300/80">{fixSteps[fixSteps.length - 1]}</span>
+                )}
+              </div>
+              {fixSteps.length > 0 && (
+                <pre className="mt-3 max-h-40 overflow-y-auto rounded bg-black/40 p-2 text-[11px] leading-4 text-white/60">
+                  {fixSteps.join("\n")}
+                </pre>
+              )}
+            </Card>
             <Card title="键盘 flash（ISP）">
               <label className="mb-3 block text-xs text-white/50">
                 镜像路径

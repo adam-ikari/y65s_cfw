@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 hidapi.workspace = true
+md-5.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true

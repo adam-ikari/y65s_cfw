@@ -1,11 +1,9 @@
 //! Tauri command surface of the YD-Y65S tool.
 
-use std::time::Duration;
-
 use serde::Serialize;
 use time::OffsetDateTime;
 use y65s_core::error::Y65sError;
-use y65s_core::isp;
+use y65s_core::flash;
 use y65s_core::keys;
 use y65s_core::protocol::{self, Profile};
 use y65s_core::Keyboard;
@@ -188,33 +186,34 @@ pub fn set_clock(sweep: bool) -> Result<ClockReport, String> {
 /// Read the whole flash of the keyboard (ISP).
 #[tauri::command]
 pub fn flash_read(path: String) -> Result<String, String> {
-    let _ = isp::enter_isp().map_err(map_err)?;
-    isp::wait_for_isp(Duration::from_secs(20)).map_err(map_err)?;
-    let session = isp::Isp::open().map_err(map_err)?;
-    let data = session.read(0, isp::FLASH_SIZE).map_err(map_err)?;
-    std::fs::write(&path, &data).map_err(|e| format!("{path}: {e}"))?;
-    session.reboot().map_err(map_err)?;
-    Ok(format!("已备份 {} 字节到 {path}", data.len()))
+    let (data, digest) = flash::backup_to(std::path::Path::new(&path)).map_err(map_err)?;
+    Ok(format!(
+        "已备份 {} 字节到 {path}（md5={digest}）",
+        data.len()
+    ))
 }
 
 /// Write a flash image back to the keyboard (ISP).
+///
+/// The command order (erase → write pages → enable → reboot) lives in
+/// `y65s_core::isp::flash_image`; the bootloader needs the enable *after*
+/// the pages, otherwise the board cannot boot.
 #[tauri::command]
 pub fn flash_write(path: String) -> Result<String, String> {
-    let data = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
-    if data.len() < isp::FIRMWARE_SIZE {
-        return Err(format!(
-            "镜像太小：{} 字节，至少需要 {} 字节",
-            data.len(),
-            isp::FIRMWARE_SIZE
-        ));
-    }
-    let _ = isp::enter_isp().map_err(map_err)?;
-    isp::wait_for_isp(Duration::from_secs(20)).map_err(map_err)?;
-    let session = isp::Isp::open().map_err(map_err)?;
-    session.erase().map_err(map_err)?;
-    session.write(0, &data[..isp::FIRMWARE_SIZE]).map_err(map_err)?;
-    session.reboot().map_err(map_err)?;
-    Ok(format!("已写入 {} 字节", isp::FIRMWARE_SIZE))
+    let steps = flash::flash_image(std::path::Path::new(&path)).map_err(map_err)?;
+    Ok(steps.join("\n"))
+}
+
+/// One click: make the screen stop drawing a volume bar that does not match
+/// the system.
+///
+/// Reads the keyboard's own flash, saves a backup, applies the two reviewed
+/// patches, writes the result back and verifies it byte for byte.  The
+/// profile, the lighting and the key map are left alone.
+#[tauri::command]
+pub fn fix_volume_bar(backup: Option<String>) -> Result<y65s_core::flash::FixReport, String> {
+    let path = backup.map(std::path::PathBuf::from);
+    flash::fix_volume_bar(path.as_deref()).map_err(map_err)
 }
 
 /// The key combinations the keyboard understands.

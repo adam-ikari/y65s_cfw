@@ -88,6 +88,24 @@ export const flashRead = (path: string) => invoke<string>("flash_read", { path }
 /** Write a flash image back to the keyboard. */
 export const flashWrite = (path: string) => invoke<string>("flash_write", { path });
 
+/** What the one click volume fix did. */
+export interface FixReport {
+  steps: string[];
+  backup: string | null;
+  backup_md5: string;
+  image_md5: string;
+  verified: boolean;
+  applied: string[];
+  already_fixed: boolean;
+}
+
+/**
+ * One click: read the keyboard's own flash, back it up, apply the two
+ * volume patches, write it back and verify it byte for byte.
+ */
+export const fixVolumeBar = (backup: string | null) =>
+  invoke<FixReport>("fix_volume_bar", { backup });
+
 /** The key combinations the keyboard understands. */
 export const keyCombos = () => invoke<Combo[]>("key_combos");
 

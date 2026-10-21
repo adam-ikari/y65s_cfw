@@ -12,6 +12,16 @@
 //! Entering the ISP from the application: feature report 5 with the magic
 //! `[0x05, 0x75, 0, 0, 0, 0]`.  The board re-enumerates as 0603:1020 and
 //! the ISP collection is then the only one available.
+//!
+//! # The write order matters
+//!
+//! Writing an image is **erase → init write → pages → enable → reboot**.
+//! The `enable` (0x55) has to come *after* the pages: the bootloader rebuilds
+//! the jump instruction at 0x0000 from the reset vector it stored at
+//! `0xEFFC` and sets the `0xEFFB = 0x02` marker that tells it a firmware is
+//! present.  Enabling first -- which an earlier version of this file did --
+//! leaves the board unable to boot.  [`write_plan`] is the single place that
+//! order is spelled out, and a unit test keeps it that way.
 
 use std::time::Duration;
 
@@ -50,6 +60,88 @@ const XFER_WRITE_PAGE: u8 = 0x77;
 /// The magic that makes the application jump into the ISP.
 pub const ENTER_ISP_MAGIC: [u8; 6] = [0x05, 0x75, 0x00, 0x00, 0x00, 0x00];
 
+/// Where the bootloader keeps the canonical copy of the reset vector.
+const VECTOR_COPY: usize = FIRMWARE_SIZE - 4;
+/// The enable marker right in front of it.
+const VECTOR_MARKER: usize = FIRMWARE_SIZE - 5;
+
+/// The bytes the bootloader owns: the enable marker and the reset vector
+/// copy.  They are not ours to compare after a write.
+pub fn bootloader_window() -> std::ops::Range<usize> {
+    VECTOR_MARKER..FIRMWARE_SIZE
+}
+
+/// One step of the ISP write sequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// 0x45 -- erase the application area.
+    Erase,
+    /// 0x57 -- start writing at the given address.
+    InitWrite(u16),
+    /// 0x77 -- one 2048 byte page.
+    WritePage,
+    /// 0x55 -- enable the firmware that was just written.
+    Enable,
+    /// 0x5a -- reboot into the application.
+    Reboot,
+}
+
+/// The order the bootloader needs for a full write.
+///
+/// `enable` comes after the pages, never before the erase -- see the module
+/// documentation.
+pub fn write_plan(pages: usize) -> Vec<Step> {
+    let mut plan = Vec::with_capacity(pages + 4);
+    plan.push(Step::Erase);
+    plan.push(Step::InitWrite(0));
+    for _ in 0..pages {
+        plan.push(Step::WritePage);
+    }
+    plan.push(Step::Enable);
+    plan.push(Step::Reboot);
+    plan
+}
+
+/// Prepare the bytes we are going to send.
+///
+/// The vendor tool keeps the application reset vector in two places: the
+/// jump instruction at 0x0000 and a canonical copy at `0xEFFC`
+/// (`firmware_size - 4`).  It mirrors the second one into the payload before
+/// writing; we do the same, byte for byte.
+pub fn prepare_payload(image: &[u8]) -> Result<Vec<u8>> {
+    if image.len() < FIRMWARE_SIZE {
+        return Err(Y65sError::BadInput(format!(
+            "镜像太小：{} 字节，至少需要 {FIRMWARE_SIZE} 字节",
+            image.len()
+        )));
+    }
+    let mut payload = image[..FIRMWARE_SIZE].to_vec();
+    let vector: [u8; 2] = [payload[1], payload[2]];
+    payload[VECTOR_COPY..VECTOR_COPY + 2].copy_from_slice(&vector);
+    Ok(payload)
+}
+
+/// Compare a flash read-back with the image we meant to write.
+///
+/// The bootloader owns the marker byte and the vector copy, so those four
+/// bytes are skipped; everything else has to match exactly.
+pub fn verify_image(image: &[u8], readback: &[u8]) -> Result<()> {
+    let window = bootloader_window();
+    let n = image.len().min(readback.len()).min(FIRMWARE_SIZE);
+    for i in 0..n {
+        if window.contains(&i) {
+            continue;
+        }
+        if image[i] != readback[i] {
+            return Err(Y65sError::Isp(format!(
+                "读回校验失败：0x{i:04X} 期望 {:02X}，实得 {:02X}",
+                image[i], readback[i]
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// An ISP session.
 pub struct Isp {
     cmd: Collection,
@@ -83,7 +175,9 @@ impl Isp {
             return Err(Y65sError::BadInput("read address must be page aligned".into()));
         }
         self.enable_firmware()?;
+        std::thread::sleep(Duration::from_millis(200));
         self.command(CMD_INIT_READ, (addr & 0xff) as u8, (addr >> 8) as u8)?;
+        std::thread::sleep(Duration::from_millis(200));
         let mut out = Vec::with_capacity(len);
         while out.len() < len {
             let mut buf = vec![0u8; PAGE_SIZE + 2];
@@ -104,29 +198,46 @@ impl Isp {
         Ok(out)
     }
 
-    /// Erase the application area.
-    pub fn erase(&self) -> Result<()> {
-        self.enable_firmware()?;
-        self.command(CMD_ERASE, 0, 0)?;
-        Ok(())
+    /// Write one page.  Callers should use [`Isp::flash_image`], which gets
+    /// the command order right.
+    fn write_page(&self, data: &[u8]) -> Result<()> {
+        let mut page = vec![0u8; PAGE_SIZE + 2];
+        page[0] = REPORT_ID_XFER;
+        page[1] = XFER_WRITE_PAGE;
+        page[2..2 + data.len()].copy_from_slice(data);
+        self.xfer.send_feature(&page)
     }
 
-    /// Write `data` at `addr` (address must be page aligned).
-    pub fn write(&self, addr: usize, data: &[u8]) -> Result<()> {
-        if addr % PAGE_SIZE != 0 {
-            return Err(Y65sError::BadInput("write address must be page aligned".into()));
-        }
-        self.enable_firmware()?;
-        self.command(CMD_INIT_WRITE, (addr & 0xff) as u8, (addr >> 8) as u8)?;
-        let mut done = 0usize;
-        while done < data.len() {
-            let take = (data.len() - done).min(PAGE_SIZE);
-            let mut page = vec![0u8; PAGE_SIZE + 2];
-            page[0] = REPORT_ID_XFER;
-            page[1] = XFER_WRITE_PAGE;
-            page[2..2 + take].copy_from_slice(&data[done..done + take]);
-            self.xfer.send_feature(&page)?;
-            done += take;
+    /// Write a whole image: erase, write every page, enable, reboot.
+    ///
+    /// This is the only write path the tool uses.  It follows [`write_plan`]
+    /// exactly, so the enable always lands after the pages.
+    pub fn flash_image(&self, image: &[u8]) -> Result<()> {
+        let payload = prepare_payload(image)?;
+        let pages = payload.len().div_ceil(PAGE_SIZE);
+        let mut page_index = 0usize;
+        for step in write_plan(pages) {
+            match step {
+                Step::Erase => {
+                    self.command(CMD_ERASE, 0, 0)?;
+                    std::thread::sleep(Duration::from_millis(2000));
+                }
+                Step::InitWrite(addr) => {
+                    self.command(CMD_INIT_WRITE, (addr & 0xff) as u8, (addr >> 8) as u8)?;
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                Step::WritePage => {
+                    let start = page_index * PAGE_SIZE;
+                    let end = (start + PAGE_SIZE).min(payload.len());
+                    self.write_page(&payload[start..end])?;
+                    page_index += 1;
+                }
+                Step::Enable => {
+                    self.command(CMD_ENABLE_FIRMWARE, 0, 0)?;
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+                Step::Reboot => self.command(CMD_REBOOT, 0, 0)?,
+            }
         }
         Ok(())
     }
@@ -151,9 +262,9 @@ pub fn wait_for_isp(timeout: Duration) -> Result<()> {
     let deadline = std::time::Instant::now() + timeout;
     while std::time::Instant::now() < deadline {
         let api = hidapi::HidApi::new().map_err(|e| Y65sError::Open(e.to_string()))?;
-        let found = api.device_list().any(|d| {
-            d.vendor_id() == 0x0603 && d.product_id() == 0x1020
-        });
+        let found = api
+            .device_list()
+            .any(|d| d.vendor_id() == ISP_VID && d.product_id() == ISP_PID);
         if found {
             return Ok(());
         }
@@ -161,6 +272,24 @@ pub fn wait_for_isp(timeout: Duration) -> Result<()> {
     }
     Err(Y65sError::Isp(
         "the keyboard did not come back as 0603:1020".into(),
+    ))
+}
+
+/// Wait until the keyboard is back in application mode (258a:019d).
+pub fn wait_for_app(timeout: Duration) -> Result<()> {
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        let api = hidapi::HidApi::new().map_err(|e| Y65sError::Open(e.to_string()))?;
+        let found = api
+            .device_list()
+            .any(|d| d.vendor_id() == VID && d.product_id() == PID);
+        if found {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    Err(Y65sError::Isp(
+        "the keyboard did not come back as 258a:019d".into(),
     ))
 }
 
@@ -183,5 +312,59 @@ mod tests {
         assert_eq!(FIRMWARE_SIZE % PAGE_SIZE, 0);
         // the ISP bootloader lives in the last 4 KiB and is never written
         assert_eq!(FLASH_SIZE - FIRMWARE_SIZE, 2 * PAGE_SIZE);
+    }
+
+    /// The enable command must never precede the pages: that is what bricked
+    /// a keyboard when this file still enabled before erasing.
+    #[test]
+    fn enable_comes_after_the_pages() {
+        let plan = write_plan(30);
+        let enable = plan
+            .iter()
+            .position(|s| *s == Step::Enable)
+            .expect("no enable step");
+        let last_page = plan
+            .iter()
+            .rposition(|s| *s == Step::WritePage)
+            .expect("no page step");
+        assert!(enable > last_page, "enable 必须排在所有写页之后");
+        assert_eq!(plan[0], Step::Erase);
+        assert_eq!(*plan.last().unwrap(), Step::Reboot);
+        assert_eq!(
+            plan.iter().filter(|s| **s == Step::WritePage).count(),
+            30
+        );
+    }
+
+    /// The payload keeps the reset vector twice, exactly like the vendor
+    /// tool writes it.
+    #[test]
+    fn payload_mirrors_the_reset_vector() {
+        let mut image = vec![0u8; FIRMWARE_SIZE];
+        image[0] = 0x02;
+        image[1] = 0x89;
+        image[2] = 0xd7;
+        let payload = prepare_payload(&image).unwrap();
+        assert_eq!(&payload[VECTOR_COPY..VECTOR_COPY + 2], &[0x89, 0xd7]);
+        assert_eq!(&payload[1..3], &[0x89, 0xd7]);
+    }
+
+    #[test]
+    fn a_short_image_is_refused() {
+        assert!(prepare_payload(&[0u8; 16]).is_err());
+    }
+
+    /// The bootloader owns the marker and the vector copy, so the read-back
+    /// check has to skip them -- but nothing else.
+    #[test]
+    fn verification_skips_only_the_bootloader_window() {
+        let mut image = vec![0u8; FIRMWARE_SIZE];
+        let mut readback = image.clone();
+        readback[VECTOR_MARKER] = 0x02;
+        readback[VECTOR_COPY] = 0x89;
+        readback[VECTOR_COPY + 1] = 0xd7;
+        assert!(verify_image(&image, &readback).is_ok());
+        readback[0x1000] = 0xff;
+        assert!(verify_image(&image, &readback).is_err());
     }
 }

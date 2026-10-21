@@ -20,6 +20,7 @@ pub fn run() {
             commands::set_clock,
             commands::flash_read,
             commands::flash_write,
+            commands::fix_volume_bar,
             commands::key_combos,
             commands::link_modes,
             commands::list_patches,
