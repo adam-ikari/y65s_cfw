@@ -4,7 +4,7 @@ title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-21T05:56:46"
+updated: "2026-10-21T06:56:30"
 ---
 
 
@@ -183,3 +183,9 @@ Python 版（`analysis/mcs51.py`）已修正。
   summary: "更正：主控「没有编码器外设」不等于读不了旋钮——机械编码器用 P4.2/P0.7 两个 GPIO 软件解码，音量旋钮在主控上，屏与无线才在模块"
   source: "2026-10-21 反汇编复核 0x2812/0x283E/0x284C"
   affects: [firmware-layout]
+
+- time: 2026-10-21T06:56:30
+  kind: decision
+  summary: "2026-10-21 设备当前固件状态（本轮收工时的定稿）：出厂代码区 0x0000-0xA3FF 与出厂 dump 逐字节相同 + 本机自己的配置区（刷机前备份 before_20261021.bin 的 0xA400-0xD5FF 段，含 flash[0xA403]=0x01、flash[0xA418]=0x02）+ 补丁 no-volume-send(0x5557，8 B) + 补丁 no-volume-ods(0x059C，40 B)。整片 MD5 48cc703280ae668539cba81a30c1ae7e，ISP 读回逐字节一致（0 差异）。旋钮实测可用（主机系统音量 50%→48%），屏幕不再画音量条。构建产物在宿主 build/ 下：YD-Y65S_factory_keys.bin（当前已刷）、YD-Y65S_knob_precfg.bin、YD-Y65S_comma_probe.bin（诊断探针，未写入设备）。"
+  source: "2026-10-21 真机三轮刷机 + 逐字节读回校验"
+  affects: [firmware-layout, no-write-policy, matrix-and-keymap]
