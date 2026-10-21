@@ -64,8 +64,7 @@ pub const PATCHES: &[Patch] = &[
         id: "no-volume-send",
         description: "不发音量：去掉 8051 把 profile 音量字节(0x31) 转发给屏幕 SoC 的\
                       那一次拷贝，设置包里的音量字段从此不再被写入 => 屏幕拿不到音量，\
-                      也就不会画那个与系统不一致的音量条。旋钮、屏幕、无线都在第二颗\
-                      SoC 上，8051 不扫描旋钮，显示逻辑改不了，只能不喂数据。",
+                      也就不会画那个与系统不一致的音量条。",
         address: 0x5557,
         // 90 0F 12 E0 90 0D BB F0
         //   MOV  DPTR,#0x0F12   ; 取 profile 的音量字段
@@ -84,6 +83,51 @@ pub const PATCHES: &[Patch] = &[
         expect: &[0x90, 0x0F, 0x12, 0xE0, 0x90, 0x0D, 0xBB, 0xF0],
         // 90 0D BB 74 00 F0 00 00
         replace: &[0x90, 0x0D, 0xBB, 0x74, 0x00, 0xF0, 0x00, 0x00],
+    },
+    Patch {
+        id: "no-volume-ods",
+        description: "旋钮不通知屏幕：音量旋钮在主控上（0x2812 采 P4.2/P0.7 正交解码，\
+                      方向写进 xdata[0x0CA0]=9）。转到时主控同时做两件事：把 HID \
+                      consumer 用量 0xE9/0xEA 写进 RAM 0x57/0x58（report id=2，\
+                      16 位 consumer 页）发给主机，系统音量照常增减；再把状态字节\
+                      0x81/0x82 写进 xdata[0x0EE4]，经 cmd 0x15 通知屏幕 SoC，屏幕\
+                      据此画音量条。此补丁只去掉后半截：0x0EE4 不再写 0x81/0x82，旋钮\
+                      分支直接跳到 0x05FA（跳过 cmd 0x15 发送与等应答，只保留运行记录\
+                      发布）⇒ 屏幕不再画音量，主机侧音量指令不变。",
+        address: 0x059C,
+        // 旋钮分支 0x0594..0x05C3：
+        //   059C: 90 0E E4 74 81 F0   MOV DPTR,#0x0EE4 / MOV A,#81 / MOVX @DPTR,A
+        //   05A2: 78 57 76 E9         MOV R0,#57 / MOV @R0,#E9   ← HID consumer 用量
+        //   05A6: 80 0F               SJMP 0x05B7
+        //   05A8: EF 64 01 70 3A      MOV A,R7 / XRL A,#01 / JNZ 0x05E7
+        //   05AD: 90 0E E4 74 82 F0   MOV DPTR,#0x0EE4 / MOV A,#82 / MOVX @DPTR,A
+        //   05B3: 78 57 76 EA         MOV R0,#57 / MOV @R0,#EA   ← HID consumer 用量
+        //   05B7: E4 08 F6 D2 0B D2 19 90 0E F2 F0
+        //   05C2: 80 23               SJMP 0x05E7  ← cmd 0x15 发送 + 等应答
+        expect: &[
+            0x90, 0x0E, 0xE4, 0x74, 0x81, 0xF0, // 059C: 写 0x0EE4=0x81
+            0x78, 0x57, 0x76, 0xE9, // 05A2: RAM 0x57 = 0xE9 (Volume Increment)
+            0x80, 0x0F, // 05A6: SJMP 0x05B7
+            0xEF, 0x64, 0x01, // 05A8: MOV A,R7 / XRL A,#01
+            0x70, 0x3A, // 05AB: JNZ 0x05E7
+            0x90, 0x0E, 0xE4, 0x74, 0x82, 0xF0, // 05AD: 写 0x0EE4=0x82
+            0x78, 0x57, 0x76, 0xEA, // 05B3: RAM 0x57 = 0xEA (Volume Decrement)
+            0xE4, 0x08, 0xF6, 0xD2, 0x0B, 0xD2, 0x19, // 05B7: RAM 0x58=0, BITS_0B, BITS_19
+            0x90, 0x0E, 0xF2, 0xF0, // 05BE: [0x0EF2] = 0
+            0x80, 0x23, // 05C2: SJMP 0x05E7
+        ],
+        replace: &[
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 059C: 不写 0x0EE4=0x81
+            0x78, 0x57, 0x76, 0xE9, // 05A2: RAM 0x57 = 0xE9 (保留)
+            0x80, 0x0F, // 05A6: SJMP 0x05B7
+            0xEF, 0x64, 0x01, // 05A8: 保留
+            0x70, 0x4D, // 05AB: JNZ 0x05FA
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 05AD: 不写 0x0EE4=0x82
+            0x78, 0x57, 0x76, 0xEA, // 05B3: RAM 0x57 = 0xEA (保留)
+            0xE4, 0x08, 0xF6, 0xD2, 0x0B, 0xD2, 0x19, // 05B7: 保留
+            0x90, 0x0E, 0xF2, 0xF0, // 05BE: 保留
+            0x80, 0x36, // 05C2: SJMP 0x05FA（跳过 cmd 0x15 发送）
+        ],
     },
 ];
 
@@ -229,7 +273,6 @@ mod tests {
         assert_eq!(picked[0].id, "no-volume-send");
         assert!(select(&["没有这个补丁".to_string()]).is_err());
     }
-
     /// Two variants of the same patch share one address, so applying both must
     /// fail: the second one no longer matches the `expect` bytes.
     #[test]
@@ -239,5 +282,68 @@ mod tests {
         let Ok(image) = std::fs::read(&path) else { return };
         let picked = select(&["no-volume-send".into(), "no-volume-send-zero".into()]).unwrap();
         assert!(apply_all(&image, &picked).is_err());
+    }
+
+    /// The knob patch must keep the host-facing consumer usage and drop only
+    /// the module notification:
+    ///
+    /// * `0x05A2`/`0x05B3` write the HID consumer usage 0xE9/0xEA (Volume
+    ///   Increment/Decrement) into RAM 0x57 -- that is what makes the host
+    ///   change the system volume, so it has to survive.
+    /// * the state byte 0x81/0x82 must no longer be written into 0x0EE4, or a
+    ///   later cmd 0x15 would replay a stale "volume changed" event.
+    /// * both exits of the knob branch must land on 0x05FA, which publishes
+    ///   the runtime record; 0x05E7 is the cmd 0x15 send we want to skip.
+    #[test]
+    fn knob_patch_keeps_the_host_usage_and_drops_the_module_notify() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../firmware/YD-Y65S_full.bin");
+        let Ok(image) = std::fs::read(&path) else { return };
+        let picked = select(&["no-volume-ods".into()]).unwrap();
+        let out = picked[0].apply(&image).unwrap();
+        let base = picked[0].address as usize;
+
+        // host-facing consumer usage survives
+        assert_eq!(&out[base + 0x06..base + 0x0A], &[0x78, 0x57, 0x76, 0xE9]);
+        assert_eq!(&out[base + 0x17..base + 0x1B], &[0x78, 0x57, 0x76, 0xEA]);
+
+        // the module state byte is no longer written
+        assert!(
+            !out[base..base + 40]
+                .windows(6)
+                .any(|w| w == [0x90, 0x0E, 0xE4, 0x74, 0x81, 0xF0]),
+            "还在写 0x0EE4=0x81"
+        );
+        assert!(
+            !out[base..base + 40]
+                .windows(6)
+                .any(|w| w == [0x90, 0x0E, 0xE4, 0x74, 0x82, 0xF0]),
+            "还在写 0x0EE4=0x82"
+        );
+
+        // both branches jump to 0x05FA (publish), not 0x05E7 (cmd 0x15 send)
+        assert_eq!(out[base + 0x0F], 0x70);
+        assert_eq!(base + 0x11 + out[base + 0x10] as usize, 0x05FA);
+        assert_eq!(out[base + 0x26], 0x80);
+        assert_eq!(base + 0x28 + out[base + 0x27] as usize, 0x05FA);
+    }
+
+    /// The knob patch must not touch a single byte outside its own range.
+    #[test]
+    fn knob_patch_touches_nothing_outside_its_range() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../firmware/YD-Y65S_full.bin");
+        let Ok(image) = std::fs::read(&path) else { return };
+        let picked = select(&["no-volume-ods".into()]).unwrap();
+        let p = picked[0];
+        let out = p.apply(&image).unwrap();
+        let start = p.address as usize;
+        let end = start + p.replace.len();
+        for i in 0..image.len() {
+            if i < start || i >= end {
+                assert_eq!(out[i], image[i], "补丁越界改了 0x{i:04X}");
+            }
+        }
+        assert_eq!(&out[start..end], &p.replace[..]);
     }
 }
