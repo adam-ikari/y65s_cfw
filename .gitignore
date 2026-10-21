@@ -29,3 +29,6 @@ desktop.ini
 tool/target/
 tool/webui/node_modules/
 tool/webui/dist/
+
+# 厂商 app 的可执行文件：只留在本地，不进版本库（不进公开仓库）
+offical_tools/
