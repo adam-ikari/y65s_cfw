@@ -1,0 +1,30 @@
+[package]
+name = "y65s-tool"
+description = "YD-Y65S 键盘工具：固件刷写 / 灯效 / 校时 / 恢复默认 / 按键说明"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "y65s_tool_lib"
+crate-type = ["lib"]
+
+[[bin]]
+name = "y65s-tool"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+y65s-core.workspace = true
+time.workspace = true

@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+authors = ["Y65S Tool"]
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+y65s-core = { path = "crates/core" }
+
+# hidapi gives us one code path for Windows (hid.dll), Linux (/dev/hidrawN) and
+# macOS (IOHIDManager).  The static libusb build keeps Linux free of a system
+# libusb; hidraw needs no extra privileges for feature reports.
+hidapi = { version = "2.6", default-features = false, features = [
+    # Linux: talk to /dev/hidrawN directly.  Feature reports (the only thing we
+    # strictly need) work even while the kernel hid driver is bound.
+    "linux-static-hidraw",
+] }
+
+# civil date and time without a system clock dependency
+time = { version = "0.3", features = ["formatting", "local-offset"] }

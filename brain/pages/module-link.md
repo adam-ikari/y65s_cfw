@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-20T15:24:14"
+updated: "2026-10-21T01:39:08"
 ---
 
 <!-- compiled_truth -->
@@ -330,4 +330,10 @@ updated: "2026-10-20T15:24:14"
   kind: evidence
   summary: "2026-10-20 两个关键实测：(1) 记录 0x04 的 128 B 窗口(模块 cmd 0x52)【确实会被模块采纳】——把 profile 的灯效字段(偏移 0x0A/0x33)覆盖后 RGB 立刻变化/闪烁，说明 cmd 0x52 是活的『设备设置』通道，profile 尾部标记 5A A5 保留即可。(2) 厂商 OemDrv.exe 的传图时序里【Sleep 是必需的】：Sleep50 -> 0x0D SetGIFParam(flag=1,gif=0,nframes,delay) 等 ACK -> Sleep120 -> 每帧 ARGB 转 RGB565BE 后 0x0C AccessData_Page(page,seq) -> 每帧后 Sleep50 -> 末帧 0x0D(flag=0) -> Sleep500；brain 早前记的『无 Sleep 版本未被采纳』与此一致 ⇒ 任何新下发(校时/传图)都要照抄这套时序，不能连发。"
   source: "omp-host 真机 2026-10-20 + /tmp/oemdrv.asm"
+  affects: [module-link, screen-customization]
+
+- time: 2026-10-21T01:39:08
+  kind: evidence
+  summary: "2026-10-21 音量上下限的根因定位(反汇编 Y95 与 K65 两个官方 app): 两个 app 都是用 Windows 音频 API IAudioEndpointVolume::GetMasterVolumeLevelScalar 拿 0.0~1.0 的系统音量, 再【乘以 100.0】取整下发(Y95: 0x4705c5 fmull 0x610a20 = 100.0; K65: 0x4742d5 fmull 0x616f80 = 100.0) ⇒ 官方下发的音量是 0~100; 而 8051 固件侧只是原样转发(profile 0x31 -> xdata[0x0F12] -> 设置包 0x0DBB, 全固件仅 0x7D05(读profile) 与 0x5557(拷进设置包) 两处, 没有任何限幅/换算) ⇒ 上下限不一致不在 8051 也不在 app, 而在【屏幕 SoC 显示端的量程】(很可能期望 0~15/0~16)。因此两条修法: (a) 在 8051 下发前把 0~100 换算成 SoC 的量程(需要先实测 SoC 的期望量程); (b) 采纳用户建议: 干脆不给屏幕 SoC 发显示音量的指令(0x5557 那处拷贝改成不写/写固定值即可)。"
+  source: "K65+Y95 双 app 反汇编 + fw_full.lst 复核 2026-10-21"
   affects: [module-link, screen-customization]

@@ -24,3 +24,8 @@ desktop.ini
 
 # agent local settings (may contain MCP credentials)
 .qoder/
+
+# tauri / rust build output
+tool/target/
+tool/webui/node_modules/
+tool/webui/dist/

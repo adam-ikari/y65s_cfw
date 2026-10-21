@@ -1,0 +1,18 @@
+[package]
+name = "y65s-core"
+description = "Protocol, HID transport and ISP support for the SINO WEALTH YD-Y65S keyboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+hidapi.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
