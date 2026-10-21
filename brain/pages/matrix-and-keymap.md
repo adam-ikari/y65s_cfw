@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [matrix, keymap, sh68f90, yd-y65s]
 created: "2026-10-19T17:49:43"
-updated: "2026-10-21T06:27:37"
+updated: "2026-10-21T06:44:01"
 ---
 
 <!-- compiled_truth -->
@@ -307,3 +307,9 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
   summary: "2026-10-21 补正上一条：唯一还差的固件可见字节是 flash[0xA418]（profile 偏移 0x18），不是 0xA417（那个固件根本不读）。0xA418 经 0x78B2/0x7CF8 进入 xdata[0x0F2B]，0x1F83 处非零才走 0x1F8D 的分支并把该值经 0x2C18（24 位乘法器）参与表索引计算 ⇒ 数值不同会算出不同的表项。刷机前本机是 0x02，出厂 dump 是 0x0A。键位区 0xBC00-0xCBFF 刷机前后只差 5 字节：0xBDFE/0xBDFF 与 0xC5FE/0xC5FF 是 0x5AA5 标记（固件不读，落在层块尾部填充区），0xC4EC 是 layer2 col9 row4 的 0x0D↔0x00（两者都是空/禁用，无功能差别）。最终镜像 = 出厂代码区(0x0000-0xA3FF 与出厂 dump 逐字节相同) + 本机自己的配置区 + 补丁 no-volume-send(0x5557) + no-volume-ods(0x059C)，MD5 48cc703280ae668539cba81a30c1ae7e，读回校验一致。"
   source: "2026-10-21 真机三轮刷机 + 逐字节比对 + 0x2C18/0x1F83 复核"
   affects: [matrix-and-keymap, isp-protocol, custom-firmware-path]
+
+- time: 2026-10-21T06:44:01
+  kind: evidence
+  summary: "2026-10-21 「，」键诊断（旋钮已确认修好：主机音量 50%→48%）：固件侧「，」是打开的 —— base 层 (col9 × row3 = P5.1×P5.3) 记录 00 00 00 36；同一列下一格 (col9 × row4 = P5.1×P5.4) 是 0D 00 00 00（禁用）。用户实测：单按「，」完全没反应但 RGB 会有反应（说明固件确实扫到了这颗键），「，」+Fn 会冒出 左Ctrl+左Alt+右Alt —— 而 row4 (P5.4) 恰好只有四个纯修饰键 (col0 LCtrl / col1 LGui / col2 LAlt / col8 RAlt)，且本机 profile[0x36]=0 → xdata[0x0F25]=0 → base 层取 0xBC00（mac-base，修饰键组合正是 Ctrl/Gui/Alt/Alt），与现象完全吻合 ⇒ 推测这颗键被解析到了 row4 而非 row3。已构建诊断探针镜像 build/YD-Y65S_comma_probe.bin（md5 42bac627d23241d13594ede5c96b4a29，相对当时已刷镜像只改 23 字节、全在键位表区）：把 base 层 9 个空/禁用槽各填一个不同字母 (q/w/e/r/t/y/u/i) 作探针，col9×row4 填「，」。按下去出现哪个字母 = 固件把这颗键解析成了哪个矩阵位置；出现「，」= 位置确认且直接可用。设备尚未写入该镜像（需用户明确授权）。"
+  source: "2026-10-21 真机复测 + fw_full.lst 复核 0x27B4 类派发/0xB130 行读取/0x748F 键位读取器"
+  affects: [matrix-and-keymap, no-write-policy]
