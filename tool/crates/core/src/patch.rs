@@ -40,7 +40,7 @@ impl Patch {
         if !self.applies_to(image) {
             let start = self.address as usize;
             let end = (start + self.expect.len()).min(image.len());
-            let actual: &[u8] = &image[start..end];
+            let actual: &[u8] = image[start..end].as_ref();
             return Err(Y65sError::BadInput(format!(
                 "补丁 {} 不匹配：0x{start:04X} 处是 {:02X?}，期望 {:02X?}",
                 self.id, actual, self.expect,
