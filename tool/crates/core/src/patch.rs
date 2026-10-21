@@ -48,7 +48,7 @@ impl Patch {
         }
         let mut out = image.to_vec();
         let start = self.address as usize;
-        out[start..start + self.replace.len()].copy_from_slice(&self.replace);
+        out[start..start + self.replace.len()].copy_from_slice(self.replace);
         Ok(out)
     }
 }
