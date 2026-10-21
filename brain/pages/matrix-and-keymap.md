@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [matrix, keymap, sh68f90, yd-y65s]
 created: "2026-10-19T17:49:43"
-updated: "2026-10-21T06:56:25"
+updated: "2026-10-21T07:00:28"
 ---
 
 <!-- compiled_truth -->
@@ -208,27 +208,6 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
 早期的"固件里不存在 `#07`/`#08` 比较"结论就是这些 gap 造成的假象。
 **任何"全固件范围内找不到 X"的结论都必须用 `--start 0 --len 0xF000` 的全量线性反汇编复核。**
 
-## 本机「，」键（已定性为硬件问题；固件侧排查终止）
-
-2026-10-21 结论。用户判断为硬件问题并决定放弃调查，固件侧到此为止。
-
-* **固件侧已证明是正常的**：base 层 `(col9 × row3 = P5.1 × P5.3)` 的记录是
-  `00 00 00 36`（class 0x00 普通键，usage 0x36 = ISO 逗号）—— **是打开的**；
-  同一列下面一格 `(col9 × row4 = P5.1 × P5.4)` 才是 `0D 00 00 00`（class 0x0D = 禁用）。
-* **固件确实扫到了这颗键**：按下时 RGB 有反应，但主机收不到任何字符；加按 Fn 时
-  主机收到 `左Ctrl + 左Alt + 右Alt`。而 row4 (`P5.4`) 一行里恰好只有四个纯修饰键
-  `(col0 LCtrl / col1 LGui / col2 LAlt / col8 RAlt)`；本机 `profile[0x36]=0` →
-  `xdata[0x0F25]=0` → base 层取 `0xBC00`（mac 基础层，修饰键组合正是 Ctrl/Gui/Alt/Alt），
-  与现象逐项吻合。
-* ⇒ **这颗键被解析到了 row4，而不是它应该在的 row3** —— 属硬件（轴体/走线）层面的错位，
-  不是固件改坏了。刷机也无关：刷机前后代码区与键位表逐字节相同，8051 可见的配置字节
-  全部还原后现象不变。
-* 诊断探针镜像（**未写入设备**）：`build/YD-Y65S_comma_probe.bin`
-  （md5 `42bac627d23241d13594ede5c96b4a29`，相对当时已刷镜像只改 23 字节、全在键位表区、
-  代码区 0 改动）：把 base 层 9 个空/禁用槽填成互不相同的字母 (q/w/e/r/t/y/u/i)，
-  `(col9 × row4)` 填「，」。若日后要继续查：刷进去按「，」，出来哪个字母就是它被解析到的位置。
-
-
 ## 尚未证实
 
 * **每列 PWM 通道 ↔ 物理列的对应关系未证实**：`PWMxxDUTY` 初值全为 `0xB0`（均匀），
@@ -245,7 +224,6 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
 
 
 ## Timeline
-
 - time: 2026-10-19T17:49:43
   kind: decision
   summary: "Created this page: 矩阵扫描与键位表 (YD-Y65S)"
@@ -319,7 +297,7 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
 
 - time: 2026-10-21T06:24:22
   kind: evidence
-  summary: "2026-10-21 刷机事故排查结论：键盘 flash 的『键行为』与刷机前逐字节等价，刷机不是，键失灵的原因。依据三条：① 8051 对在用 profile(0xA400) 只读 14 个偏移(0x03/0x0A/0x16/0x18/0x1F/0x31/0x33/0x35/0x36/0x37/0x7E/0x7F)，整块 profile 与 0xA800-0xA95F 都不读；② 键位表在 flash 0xBC00(4 层)，「，」用 usage 0x36 位于 col9×row3(P5.1×P5.3)，记录 00 00 00 36 = 启用(不是 0x0D 禁用)；③ 刷机前后 0x0000-0xA448 代码区逐字节相同，唯一固件可见的配置字节 flash[0xA403](profile 偏移 0x03，经 0xD021 变成 xdata[0x0C2A]=值+2，是键记录表 0x04F5/0x0473(21B 一项)的索引)。刷机把该字节从 0x01 还原成出厂的 0x00(键表切回另一套)，已按 0x01 刷回仍然无效 ⇒ 该键在刷机前就已经是不灵的，或与固件无关(硬件/键帽/主机端)。同次刷机顺带验证旋钮仍然好用(主机音量 50%→48%)。"
+  summary: "2026-10-21 刷机安全事实：键盘 flash 的『键行为』与刷机前逐字节等价 —— 刷机前后 0x0000-0xA448 代码区逐字节相同。8051 对在用 profile(0xA400) 只读 14 个偏移(0x03/0x0A/0x16/0x18/0x1F/0x31/0x33/0x35/0x36/0x37/0x7E/0x7F)，整块 profile 与 0xA800-0xA95F 都不读；固件可见的配置字节只有 flash[0xA403](profile 偏移 0x03，经 0xD021 变成 xdata[0x0C2A]=值+2，是键记录表 0x04F5/0x0473(21B 一项)的索引)。同次刷机顺带验证旋钮仍然好用(主机音量 50%→48%)。"
   source: "2026-10-21 真机刷机前后 64KiB 逐字节比对 + build/fw_full.lst 复核 0xD021/0x748F/0x04F5"
   affects: [matrix-and-keymap, isp-protocol, no-write-policy]
 
@@ -329,14 +307,8 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
   source: "2026-10-21 真机三轮刷机 + 逐字节比对 + 0x2C18/0x1F83 复核"
   affects: [matrix-and-keymap, isp-protocol, custom-firmware-path]
 
-- time: 2026-10-21T06:44:01
-  kind: evidence
-  summary: "2026-10-21 「，」键诊断（旋钮已确认修好：主机音量 50%→48%）：固件侧「，」是打开的 —— base 层 (col9 × row3 = P5.1×P5.3) 记录 00 00 00 36；同一列下一格 (col9 × row4 = P5.1×P5.4) 是 0D 00 00 00（禁用）。用户实测：单按「，」完全没反应但 RGB 会有反应（说明固件确实扫到了这颗键），「，」+Fn 会冒出 左Ctrl+左Alt+右Alt —— 而 row4 (P5.4) 恰好只有四个纯修饰键 (col0 LCtrl / col1 LGui / col2 LAlt / col8 RAlt)，且本机 profile[0x36]=0 → xdata[0x0F25]=0 → base 层取 0xBC00（mac-base，修饰键组合正是 Ctrl/Gui/Alt/Alt），与现象完全吻合 ⇒ 推测这颗键被解析到了 row4 而非 row3。已构建诊断探针镜像 build/YD-Y65S_comma_probe.bin（md5 42bac627d23241d13594ede5c96b4a29，相对当时已刷镜像只改 23 字节、全在键位表区）：把 base 层 9 个空/禁用槽各填一个不同字母 (q/w/e/r/t/y/u/i) 作探针，col9×row4 填「，」。按下去出现哪个字母 = 固件把这颗键解析成了哪个矩阵位置；出现「，」= 位置确认且直接可用。设备尚未写入该镜像（需用户明确授权）。"
-  source: "2026-10-21 真机复测 + fw_full.lst 复核 0x27B4 类派发/0xB130 行读取/0x748F 键位读取器"
-  affects: [matrix-and-keymap, no-write-policy]
-
-- time: 2026-10-21T06:56:25
+- time: 2026-10-21T07:00:28
   kind: decision
-  summary: "加入「，」键硬件问题结论；固件侧排查终止"
-  source: "2026-10-21 真机复测 + 用户判断"
+  summary: "整理键位表页真值结构：保留矩阵几何、键位表格式与刷机安全结论"
+  source: "2026-10-21 按用户要求清理"
   affects: [matrix-and-keymap]
