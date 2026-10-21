@@ -18,9 +18,11 @@ jobs:
       - name: 格式检查
         run: cargo fmt --all --check --manifest-path tool/Cargo.toml
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --manifest-path tool/Cargo.toml -- -D warnings
+        # 只查 core 与 cli：Tauri 那层要 glib/webkit2gtk（Linux 系统依赖），
+        # 桌面应用的编译由 release 流水线在 Windows 上验证。
+        run: cargo clippy -p y65s-core -p y65s-cli --all-targets --manifest-path tool/Cargo.toml -- -D warnings
       - name: 测试
-        run: cargo test --workspace --manifest-path tool/Cargo.toml
+        run: cargo test -p y65s-core -p y65s-cli --manifest-path tool/Cargo.toml
 
   webui:
     name: 前端
