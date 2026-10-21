@@ -61,11 +61,11 @@ impl Patch {
 /// the wrong code.
 pub const PATCHES: &[Patch] = &[
     Patch {
-        id: "no-volume-display",
-        description: "不再把音量显示到屏幕：8051 侧把 profile 的音量字节(0x31) \
-                       转发给屏幕 SoC 的那一次拷贝，改成写 0xFF（超出 0~100 量程，\
-                       SoC 无法显示音量条）。没有我们的软件在跑时，屏幕上就不会出现\
-                       与系统不一致的音量；需要显示时由我们自己的推帧负责。",
+        id: "no-volume-send",
+        description: "不发音量：去掉 8051 把 profile 音量字节(0x31) 转发给屏幕 SoC 的\
+                      那一次拷贝，设置包里的音量字段从此不再被写入 => 屏幕拿不到音量，\
+                      也就不会画那个与系统不一致的音量条。旋钮、屏幕、无线都在第二颗\
+                      SoC 上，8051 不扫描旋钮，显示逻辑改不了，只能不喂数据。",
         address: 0x5557,
         // 90 0F 12 E0 90 0D BB F0
         //   MOV  DPTR,#0x0F12   ; 取 profile 的音量字段
@@ -73,17 +73,13 @@ pub const PATCHES: &[Patch] = &[
         //   MOV  DPTR,#0x0DBB   ; 设置包里的音量位置
         //   MOVX @DPTR,A
         expect: &[0x90, 0x0F, 0x12, 0xE0, 0x90, 0x0D, 0xBB, 0xF0],
-        // 90 0D BB 74 FF F0 00 00
-        //   MOV  DPTR,#0x0DBB
-        //   MOV  A,#0xFF
-        //   MOVX @DPTR,A
-        //   NOP NOP
-        replace: &[0x90, 0x0D, 0xBB, 0x74, 0xFF, 0xF0, 0x00, 0x00],
+        // 8 x NOP: 整段拷贝去掉
+        replace: &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
     },
     Patch {
-        id: "no-volume-display-zero",
-        description: "同 no-volume-display，但哨兵值用 0x00 而不是 0xFF。\
-                      哪个值让 SoC 真正不画音量条，刷一次看屏幕即可定。",
+        id: "no-volume-send-zero",
+        description: "同上，但把音量字段写成 0（静音）而不是不写。哪个让 SoC 真正\
+                      不画音量条，刷一次看屏幕即可定。",
         address: 0x5557,
         expect: &[0x90, 0x0F, 0x12, 0xE0, 0x90, 0x0D, 0xBB, 0xF0],
         // 90 0D BB 74 00 F0 00 00
@@ -112,7 +108,7 @@ pub fn check(image: &[u8], patches: &[Patch]) -> Vec<PatchReport> {
 }
 
 /// Apply a patch set to an image, failing on the first mismatch.
-pub fn apply_all(image: &[u8], patches: &[Patch]) -> Result<Vec<u8>> {
+pub fn apply_all(image: &[u8], patches: &[&Patch]) -> Result<Vec<u8>> {
     let mut out = image.to_vec();
     for p in patches {
         out = p.apply(&out)?;
@@ -223,5 +219,25 @@ mod tests {
                 assert_eq!(out[i], image[i], "补丁越界改了 0x{i:04X}");
             }
         }
+    }
+
+    /// Patches are picked by id; an unknown id is an error.
+    #[test]
+    fn select_picks_by_id() {
+        let picked = select(&["no-volume-send".to_string()]).unwrap();
+        assert_eq!(picked.len(), 1);
+        assert_eq!(picked[0].id, "no-volume-send");
+        assert!(select(&["没有这个补丁".to_string()]).is_err());
+    }
+
+    /// Two variants of the same patch share one address, so applying both must
+    /// fail: the second one no longer matches the `expect` bytes.
+    #[test]
+    fn conflicting_variants_cannot_both_be_applied() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../firmware/YD-Y65S_full.bin");
+        let Ok(image) = std::fs::read(&path) else { return };
+        let picked = select(&["no-volume-send".into(), "no-volume-send-zero".into()]).unwrap();
+        assert!(apply_all(&image, &picked).is_err());
     }
 }

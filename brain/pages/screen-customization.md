@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-21T01:20:29"
+updated: "2026-10-21T03:13:44"
 ---
 
 <!-- compiled_truth -->
@@ -222,3 +222,9 @@ updated: "2026-10-21T01:20:29"
   summary: "2026-10-21 官方工具线索：仓库 offical_tools/ 里的『K65 Keyboard Setup v2.0 20241026』(innoextract 可解) 与 Y95 版是同族 app，KB.ini 同为 VID=258a PID=019d ⇒ 能直接驱动本机。K65 版与 Y95 版的差别正是对时：K65 的 KB.ini 里 SendTimeOnOpenKB=1(启用)、SendSysParam=1000、SyncMask=3，Y95 版则是注释掉的死配置。反汇编 K65 的 OemDrv.exe 得到：(1) 设备类是 CDev3632(即 BK3632)；(2) 命令走 CDev3632::AccessData(cmd,nBytesToWrite,package index) 分包发送并带 crc，日志串有 'AccessData: package index err, cmd=0x%x, send=0x%x, in=0x%x'、'CDev3632::SendCMD: timeout, cmd=0x%x, nPackages=%d'、'CDevG5KB::AccessData_Page'、'SetGIFParam'；(3) 存在一个 1 秒循环：取本机 GetLocalTime → 若与上次不同 → 调 0x468c00 发送，载荷为 [date[0]][time[0]][x][yy_lo][yy_hi][mo][dd][hh][mi][ss][wd] 共 11 字节(长度参数 14)，随后 Sleep(SendSysParam=1000)；SyncMask 的 bit0x02/bit0x04 分别控制日期/时间。⇒ 厂商校时走的是这条每秒循环，理论上只要让官方 app 打开键盘即可自动对时(不用逆出包格式)。"
   source: "K65 Keyboard Setup 反汇编 2026-10-21 (innoextract + objdump)"
   affects: [screen-customization, module-link, driveall-protocol]
+
+- time: 2026-10-21T03:13:44
+  kind: reversal
+  summary: "2026-10-21 推帧路线整体放弃：实测整屏一帧（240x135 RGB565）要 4 分钟，任何动态内容都不成立 ⇒ 选项 (A)『PC 侧经 0x0D/0x0C 实时推帧』作废；工具里的屏幕推帧相关代码（core 的 image/push_frame、Tauri 的 push_screen/fill_screen、前端屏幕页签）已删除。屏幕内容只能来自模块自己 ⇒ 音量显示改走固件补丁『不喂音量』路线（见 no-write-policy）。"
+  source: "2026-10-21 用户决定"
+  affects: [screen-customization, no-write-policy]

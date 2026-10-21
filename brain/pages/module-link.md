@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [module, uart, screen, protocol]
 created: "2026-10-19T23:09:10"
-updated: "2026-10-21T01:39:08"
+updated: "2026-10-21T03:20:30"
 ---
 
 <!-- compiled_truth -->
@@ -337,3 +337,9 @@ updated: "2026-10-21T01:39:08"
   summary: "2026-10-21 音量上下限的根因定位(反汇编 Y95 与 K65 两个官方 app): 两个 app 都是用 Windows 音频 API IAudioEndpointVolume::GetMasterVolumeLevelScalar 拿 0.0~1.0 的系统音量, 再【乘以 100.0】取整下发(Y95: 0x4705c5 fmull 0x610a20 = 100.0; K65: 0x4742d5 fmull 0x616f80 = 100.0) ⇒ 官方下发的音量是 0~100; 而 8051 固件侧只是原样转发(profile 0x31 -> xdata[0x0F12] -> 设置包 0x0DBB, 全固件仅 0x7D05(读profile) 与 0x5557(拷进设置包) 两处, 没有任何限幅/换算) ⇒ 上下限不一致不在 8051 也不在 app, 而在【屏幕 SoC 显示端的量程】(很可能期望 0~15/0~16)。因此两条修法: (a) 在 8051 下发前把 0~100 换算成 SoC 的量程(需要先实测 SoC 的期望量程); (b) 采纳用户建议: 干脆不给屏幕 SoC 发显示音量的指令(0x5557 那处拷贝改成不写/写固定值即可)。"
   source: "K65+Y95 双 app 反汇编 + fw_full.lst 复核 2026-10-21"
   affects: [module-link, screen-customization]
+
+- time: 2026-10-21T03:20:30
+  kind: decision
+  summary: "2026-10-21 音量链路钉死（反汇编逐条核对）：音量的唯一出口是 8051 的 0x5557 那次拷贝（xdata[0x0F12]=profile 0x31 的镜像 → 设置包 xdata[0x0DBB]），设置包再按 cmd 0x52 逐字节发 128 B 给屏幕 SoC（0x5594-0x55CE）。xdata[0x0F12] 只有载入(0x7D00)与该拷贝两处被读，xdata[0x0DBB] 只有一处被写 ⇒ 去掉那次拷贝 = 8051 不发音量，且不动任何别的字段。旋钮不在 8051 矩阵里（90 键无旋钮项、8051 无编码器外设）⇒ 旋钮在模块上，调节经模块→UART→8051→主机的 HID 链，不经过设置包 ⇒ 音量补丁不影响旋钮功能。另外确认：厂商 app 会读设备布局参数 KnobIndex/KeyLineStart/NaviInx（OemDrv.exe 内 'KnobIndex' 字符串，运行时从设备取，KB.ini 里没有）⇒ 旋钮的物理位置在 dump 里查不到，得靠用户确认。"
+  source: "2026-10-21 fw_full.lst + K65 app 反汇编"
+  affects: [module-link, no-write-policy, matrix-and-keymap]

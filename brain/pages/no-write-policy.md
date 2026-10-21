@@ -4,7 +4,7 @@ title: "写入禁令 (No-Write Policy)"
 category: decision
 status: active
 created: "2026-10-19T16:46:16"
-updated: "2026-10-21T02:54:27"
+updated: "2026-10-21T03:20:25"
 ---
 
 <!-- compiled_truth -->
@@ -35,6 +35,25 @@ updated: "2026-10-21T02:54:27"
 
 只有用户以明确措辞（例如"可以写入"/"烧录吧"）授权后，才可执行写入；
 授权应针对**具体的一次操作**，而不是一次性永久放行。
+
+## 音量显示策略（2026-10-21 修订）
+
+**没有我们的软件在跑时，屏幕上不要出现音量** —— 那个值本来就不准，显示出来只会误导。
+
+* 成因：厂商 app 用 `IAudioEndpointVolume` 读 0.0~1.0 的系统音量、乘 **100.0** 下发；
+  8051 **原样转发、零限幅**。
+* 音量在固件里的完整链路（已逐条核对反汇编）：flash `0xA431`（profile 字段 `0x31`）
+  → `0x7D00` 载入 `xdata[0x0F12]` → `0x5557` 拷贝进设置包 `xdata[0x0DBB]` →
+  `0x5594`–`0x55CE` 按 cmd `0x52` 逐字节发 128 B 给屏幕 SoC。`xdata[0x0F12]` 全固件
+  只有两处被读（载入 + 那次拷贝），`xdata[0x0DBB]` 只有一处被写 ⇒ **那次拷贝是音量的唯一出口**。
+* 修法 = 固件补丁 `no-volume-send`：`0x5557` 的拷贝整个去掉（8 × NOP）⇒ **不发音量**，
+  不塞哨兵值/假值。设置包定长 128 B，那个字节照样发，但启动时 `0x89EE` 清零 xdata
+  `0x0000-0x0FFF` ⇒ 该值恒为 0，模块拿不到会变的音量。
+* **旋钮不受影响**：旋钮/屏幕/无线都在第二颗 SoC（模块）上，8051 的输入只有按键矩阵
+  （90 键，键位表无旋钮项）与模块私有 UART；模块把旋钮调节变成 HID 报告经 UART 交给
+  8051 再转发主机，这条链不经过设置包 ⇒ 去掉那次拷贝动不了旋钮。
+* **推帧路线已放弃**（整屏一帧 4 分钟，做不了任何动态内容）⇒ 音量没有别的显示途径。
+* 变体 `no-volume-send-zero`（显式写 0）留在补丁表里，效果与不写一致（xdata 开机清零）。
 
 
 ## Timeline
@@ -68,3 +87,15 @@ updated: "2026-10-21T02:54:27"
   summary: "2026-10-21 用户定的音量策略：没有我们的软件在跑时，屏幕上不要显示音量（那个值本来就不准，显示只会误导）⇒ 做固件补丁 no-volume-display：8051 在 0x5557 把 profile 音量字段(0x31)转发进设置包(0x0DBB)的那次拷贝(90 0F 12 E0 90 0D BB F0)改成写常量 0xFF(90 0D BB 74 FF F0 00 00)，超出 0~100 量程 ⇒ SoC 显示不出音量条。补丁 expect 字节取自 firmware/YD-Y65S_full.bin 与 backups/YD-Y65S_full_20261019.bin(两处一致)，由单测 shipped_patches_match_the_dumps / shipped_patch_rewrites_only_the_volume_field 校验(20 项单测全绿)。需要显示音量时改由我们自己的推帧负责。"
   source: "2026-10-21 固件补丁设计"
   affects: [no-write-policy, custom-firmware-path, module-link]
+
+- time: 2026-10-21T03:13:36
+  kind: decision
+  summary: "写入禁令不变；新增音量显示策略：不喂音量给模块（补丁 no-volume-send，去掉那次拷贝，不用哨兵值），并记录推帧路线已放弃"
+  source: "2026-10-21 音量补丁修订 + 推帧路线放弃"
+  affects: [no-write-policy]
+
+- time: 2026-10-21T03:20:25
+  kind: decision
+  summary: "写入禁令不变；音量显示策略补全固件链路证据（唯一出口 0x5557、xdata 开机清零、旋钮链路独立）"
+  source: "2026-10-21 反汇编逐条核对"
+  affects: [no-write-policy]

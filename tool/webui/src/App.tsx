@@ -58,7 +58,7 @@ export default function App() {
   };
 
   const refresh = async () => {
-    const s = await api.status().catch((e) => null);
+    const s = await api.status().catch(() => null);
     if (s) setStatus(s);
     const c = await api.listCollections().catch(() => []);
     setCollections(c);

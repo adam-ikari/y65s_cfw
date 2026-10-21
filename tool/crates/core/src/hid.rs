@@ -89,7 +89,7 @@ impl Collection {
         let path = self.path.clone();
         thread::spawn(move || {
             let Ok(api) = hidapi::HidApi::new() else { return };
-            let Ok(mut device) = api.open_path(&path) else { return };
+            let Ok(device) = api.open_path(&path) else { return };
             let mut buf = [0u8; 64];
             if let Ok(n) = device.read(&mut buf) {
                 let _ = tx.send(buf[..n].to_vec());

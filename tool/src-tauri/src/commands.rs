@@ -1,15 +1,13 @@
 //! Tauri command surface of the YD-Y65S tool.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::State;
 use time::OffsetDateTime;
 use y65s_core::error::Y65sError;
 use y65s_core::isp;
 use y65s_core::keys;
-use y65s_core::protocol::{self, Profile, ScreenTiming};
+use y65s_core::protocol::{self, Profile};
 use y65s_core::Keyboard;
 
 /// Everything the UI needs to know about the keyboard.
@@ -249,7 +247,7 @@ pub fn check_patches(dump: String) -> Result<Vec<y65s_core::patch::PatchReport>,
 pub fn build_patched(dump: String, out: String, ids: Vec<String>) -> Result<String, String> {
     let data = std::fs::read(&dump).map_err(|e| format!("{dump}: {e}"))?;
     let patches = y65s_core::patch::select(&ids).map_err(map_err)?;
-    let patched = y65s_core::patch::apply_all(&data, patches).map_err(map_err)?;
+    let patched = y65s_core::patch::apply_all(&data, &patches).map_err(map_err)?;
     std::fs::write(&out, &patched).map_err(|e| format!("{out}: {e}"))?;
     Ok(format!(
         "已按 {} 条补丁生成 {out}（{} 字节）",
