@@ -2,11 +2,11 @@ name: release
 
 # 打 tag 即发布：
 #   git tag v0.1.0 && git push origin v0.1.0
-#
-# 产出三样东西，都进同一个 GitHub Release：
-#   * YD-Y65S 工具（Windows 安装包，Tauri 桌面应用）
-#   * y65s.exe（命令行版，双击即用）
-#   * YD-Y65S_factory_volume_fixed.bin（出厂固件 + 音量条修复）
+# 产出四样东西，都进同一个 GitHub Release：
+#   * YD-Y65S-Tool_*.exe / .msi   桌面应用（Windows 安装包）
+#   * y65s.exe                    命令行版
+#   * fix-volume.bat              双击即用的一键入口
+#   * YD-Y65S_factory_volume_fixed.bin   出厂固件 + 音量条修复
 
 on:
   push:
@@ -52,28 +52,23 @@ jobs:
         run: npm --prefix tool/webui ci
       - name: 安装 Tauri CLI
         run: npm install -g @tauri-apps/cli@latest
-      - name: 打包并发布
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 打包
+        run: npx --prefix tool tauri build --project-path tool
+      - name: 收集安装包
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Get-ChildItem -Path tool/target/release/bundle -Recurse -Include *.exe,*.msi |
+            Where-Object { $_.Name -notlike "*.sig" } |
+            ForEach-Object { Copy-Item $_.FullName dist/ }
+          Copy-Item tool/cli/fix-volume.bat dist/
+          Get-ChildItem dist | Select-Object Name, Length
+      - uses: actions/upload-artifact@v4
         with:
-          projectPath: tool
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: "YD-Y65S 工具 ${{ github.event.inputs.tag || github.ref_name }}"
-          releaseBody: |
-            YD-Y65S 键盘工具。
+          name: y65s-app-windows
+          path: dist/
 
-            * 桌面应用：固件备份 / 打补丁 / 刷写 / 校时 / 灯效 / 一键修复音量条
-            * 命令行版：`y65s.exe fix-volume` 一键修复音量条
-            * 固件：出厂固件 + 音量条修复（两条字节级补丁）
-
-            详见 https://adam-ikari.github.io/y65s_cfw/
-          releaseDraft: false
-          prerelease: false
-          args: ""
-
-  collect:
-    name: 收集命令行版与固件
+  publish:
+    name: 发布 Release
     needs: [app, cli]
     runs-on: ubuntu-latest
     steps:
@@ -82,15 +77,31 @@ jobs:
         with:
           name: y65s-cli-windows
           path: dist
-      - name: 上传到 Release
+      - uses: actions/download-artifact@v4
+        with:
+          name: y65s-app-windows
+          path: dist
+      - name: 收齐固件并创建 Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           cp firmware/YD-Y65S_factory_volume_fixed.bin dist/
-          cp tool/cli/fix-volume.bat dist/
-          gh release upload "$TAG" \
-            dist/y65s.exe \
-            dist/fix-volume.bat \
-            dist/YD-Y65S_factory_volume_fixed.bin \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          notes=$(cat <<'EOF'
+          YD-Y65S 键盘工具。
+
+          * 桌面应用：固件备份 / 打补丁 / 刷写 / 校时 / 灯效 / 一键修复音量条
+          * 命令行版：`y65s.exe fix-volume` 一键修复音量条（先备份再写入，写完读回校验）
+          * 固件：出厂固件 + 音量条修复（两条字节级补丁）
+
+          站点：https://adam-ikari.github.io/y65s_cfw/
+          EOF
+          )
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "YD-Y65S 工具 $TAG" --notes "$notes"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "YD-Y65S 工具 $TAG" --notes "$notes"
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | "\(.name)  \(.size)"'
