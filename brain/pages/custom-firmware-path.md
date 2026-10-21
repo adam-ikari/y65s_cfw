@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-20T10:52:58"
+updated: "2026-10-21T02:46:37"
 ---
 
 
@@ -132,3 +132,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   summary: "2026-10-20 排除『借厂商 OTA 通道给模组刷自制固件』: ODM 网页 OTA 实为 Sonix 主控 ISP(仅 0x0C45 设备/WASM sn_isp_lib), 而 Y95 的 258A:019D 记录协议白名单不含 OTA 命令, 原厂安装包/更新服务器也没有模组固件. 所以本页的 SMK 主控固件仍是唯一可自制的固件载体; 模组侧只能当显示外设驱动."
   source: "build/odm/layout-classic-Bylu1MNp.js + gm 表 + build/fw_full.lst 0xA331"
   affects: [custom-firmware-path]
+
+- time: 2026-10-21T02:46:37
+  kind: decision
+  summary: "2026-10-21 路线确定：自制固件 = 【原厂固件 + 字节级补丁】，不是从零重写。新工具 tool/ 用 Tauri v2 做（Windows/Linux/macOS 一套）：crates/core(协议+hidapi 跨平台 HID+自己实现 Sinowealth ISP+补丁框架，14+ 单测) + src-tauri(命令层) + webui(React+Vite+Tailwind)。功能：状态/灯效/校时/推屏/固件(备份·补丁·刷写)/恢复默认/按键说明。补丁模型 crates/core/src/patch.rs：每条补丁带 expect(必须匹配的原字节)+replace+地址，对不上就拒绝打，避免打到错的地方。已知待补两处：(1) 音量上下限与系统不一致 —— 厂商 app 用 IAudioEndpointVolume 读 0.0~1.0 再乘 100.0 下发(Y95 0x4705c5 fmull 0x610a20 / K65 0x4742d5 fmull 0x616f80，两个 app 一致)，8051 只是原样转发(profile 0x31 -> xdata[0x0F12] -> 设置包 0x0DBB，固件 0x5557 拷贝、0x5594 起按 cmd 0x52 逐字节发 128B，源 0x0D8A+计数)，无任何限幅；⇒ 修法：下发前换算 SoC 量程，或让 0x5557 那处改为写常量(不发显示音量)。(2) 校时包落点：11B 载荷已知([date][cpu][x]+年月日时分秒星期)，记录/偏移未钉死，工具里有逐通道不同分钟数的扫描。"
+  source: "2026-10-21 工具实现 + 双 app 反汇编"
+  affects: [custom-firmware-path, module-link, screen-customization]
