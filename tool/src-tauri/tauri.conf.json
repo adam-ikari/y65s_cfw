@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Y65S 键盘工具",
+  "productName": "YD-Y65S-Tool",
   "version": "0.1.0",
   "identifier": "com.y65s.tool",
   "build": {

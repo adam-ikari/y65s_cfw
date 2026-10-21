@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core:
+    name: 核心库与命令行版
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: 格式检查
+        run: cargo fmt --all --check --manifest-path tool/Cargo.toml
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --manifest-path tool/Cargo.toml -- -D warnings
+      - name: 测试
+        run: cargo test --workspace --manifest-path tool/Cargo.toml
+
+  webui:
+    name: 前端
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 安装依赖
+        run: npm --prefix tool/webui ci
+      - name: 类型检查与构建
+        run: npm --prefix tool/webui run build

@@ -116,10 +116,29 @@ bit5）。跳到 `0x05FA` = 只发记录、不发 cmd `0x15`，同时也跳过�
 ```
 tool/
 ├── Cargo.toml           # workspace
-├── crates/core/         # 协议 + HID + ISP + 补丁框架（无 UI 依赖，带单测）
+├── crates/core/         # 协议 + HID + ISP + 补丁框架 + 一键流程（无 UI 依赖，带单测）
+├── crates/cli/          # 命令行版：y65s fix-volume / backup / flash / patch
+├── cli/fix-volume.bat   # Windows 用户的「双击即用」入口
 ├── src-tauri/           # Tauri v2 应用层（命令层）
 └── webui/               # React + Vite + Tailwind 前端
 ```
+
+## 命令行版（一键修复音量条）
+
+```bash
+cargo build --release -p y65s-cli     # 产物：target/release/y65s(.exe)
+
+y65s fix-volume        # 一键修复音量条：读出 → 备份 → 打补丁 → 写入 → 读回逐字节校验
+y65s backup <路径>      # 只读出整片 flash，不写任何东西
+y65s flash <镜像>       # 刷写镜像（写入前自动备份到 <镜像>.pre-flash-backup.bin）
+y65s patch <dump> <输出> # 给 dump 打补丁生成新镜像，不碰设备
+y65s patches            # 列出补丁表
+y65s info               # 键盘连接状态
+```
+
+**写入顺序**：`erase → write pages → enable → reboot`。`enable`（`0x55`）必须排在所有写页之后 ——
+bootloader 用它存在 `0xEFFC` 的复位向量重建 `0x0000` 的跳转指令；顺序反了键盘就开不了机。
+这个顺序集中在 `isp::write_plan()` 里，并有单测盯着。
 
 ## 构建与运行
 
