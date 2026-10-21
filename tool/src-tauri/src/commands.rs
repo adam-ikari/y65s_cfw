@@ -181,8 +181,6 @@ pub fn set_clock(sweep: bool) -> Result<ClockReport, String> {
     })
 }
 
-
-
 /// Read the whole flash of the keyboard (ISP).
 #[tauri::command]
 pub fn flash_read(path: String) -> Result<String, String> {

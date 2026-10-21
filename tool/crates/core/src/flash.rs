@@ -73,7 +73,7 @@ pub fn default_backup_path() -> PathBuf {
 
 /// Read the whole flash of the keyboard, without writing anything.
 pub fn backup_to(path: &Path) -> Result<(Vec<u8>, String)> {
-    let _ = isp::enter_isp()?;
+    isp::enter_isp()?;
     isp::wait_for_isp(Duration::from_secs(20))?;
     let session = Isp::open()?;
     let flash = session.read(0, isp::FLASH_SIZE)?;
@@ -92,7 +92,7 @@ pub fn fix_volume_bar(backup_path: Option<&Path>) -> Result<FixReport> {
     let mut steps: Vec<String> = Vec::new();
 
     steps.push("进入 ISP 模式…".into());
-    let _ = isp::enter_isp()?;
+    isp::enter_isp()?;
     isp::wait_for_isp(Duration::from_secs(20))?;
     let session = Isp::open()?;
 
@@ -151,7 +151,7 @@ pub fn fix_volume_bar(backup_path: Option<&Path>) -> Result<FixReport> {
     steps.push("已重启回应用模式。".into());
 
     steps.push("读回校验…".into());
-    let _ = isp::enter_isp()?;
+    isp::enter_isp()?;
     isp::wait_for_isp(Duration::from_secs(20))?;
     let verify_session = Isp::open()?;
     let readback = verify_session.read(0, isp::FLASH_SIZE)?;
@@ -172,11 +172,7 @@ pub fn fix_volume_bar(backup_path: Option<&Path>) -> Result<FixReport> {
 }
 
 /// Build a patched image from a dump on disk, without touching the keyboard.
-pub fn build_patched(
-    dump: &Path,
-    out: &Path,
-    ids: &[String],
-) -> Result<(Vec<u8>, Vec<String>)> {
+pub fn build_patched(dump: &Path, out: &Path, ids: &[String]) -> Result<(Vec<u8>, Vec<String>)> {
     let image = std::fs::read(dump)?;
     let patches = patch::select(ids)?;
     let patched = patch::apply_all(&image, &patches)?;
@@ -201,7 +197,7 @@ pub fn flash_image(path: &Path) -> Result<Vec<String>> {
         md5_hex(&image)
     ));
     steps.push("进入 ISP 模式…".into());
-    let _ = isp::enter_isp()?;
+    isp::enter_isp()?;
     isp::wait_for_isp(Duration::from_secs(20))?;
     let session = Isp::open()?;
     steps.push("擦除并写入（这一步不要拔线）…".into());
@@ -210,7 +206,7 @@ pub fn flash_image(path: &Path) -> Result<Vec<String>> {
     isp::wait_for_app(Duration::from_secs(30))?;
     steps.push("已重启回应用模式。".into());
     steps.push("读回校验…".into());
-    let _ = isp::enter_isp()?;
+    isp::enter_isp()?;
     isp::wait_for_isp(Duration::from_secs(20))?;
     let verify_session = Isp::open()?;
     let readback = verify_session.read(0, isp::FLASH_SIZE)?;
@@ -254,9 +250,7 @@ mod tests {
             assert!(p.applies_to(&image), "补丁 {} 对不上出厂 dump", p.id);
         }
         let out = patch::apply_all(&image, &patches).unwrap();
-        let changed: Vec<usize> = (0..image.len())
-            .filter(|i| image[*i] != out[*i])
-            .collect();
+        let changed: Vec<usize> = (0..image.len()).filter(|i| image[*i] != out[*i]).collect();
         assert!(!changed.is_empty());
         for i in changed {
             let inside = patches

@@ -81,16 +81,56 @@ pub struct ProfileField {
 
 /// The profile fields we know about.
 pub const PROFILE_FIELDS: &[ProfileField] = &[
-    ProfileField { offset: 0x03, name: "keymap_id", factory: 0x00 },
-    ProfileField { offset: 0x0A, name: "led_effect_index", factory: 0x0B },
-    ProfileField { offset: 0x16, name: "reserved_16", factory: 0x00 },
-    ProfileField { offset: 0x18, name: "reserved_18", factory: 0x99 },
-    ProfileField { offset: 0x1F, name: "reserved_1F", factory: 0x0A },
-    ProfileField { offset: 0x31, name: "volume_level", factory: 0x64 },
-    ProfileField { offset: 0x33, name: "led_effect_mode", factory: 0x01 },
-    ProfileField { offset: 0x35, name: "reserved_35", factory: 0x01 },
-    ProfileField { offset: 0x36, name: "reserved_36", factory: 0x01 },
-    ProfileField { offset: 0x37, name: "reserved_37", factory: 0x00 },
+    ProfileField {
+        offset: 0x03,
+        name: "keymap_id",
+        factory: 0x00,
+    },
+    ProfileField {
+        offset: 0x0A,
+        name: "led_effect_index",
+        factory: 0x0B,
+    },
+    ProfileField {
+        offset: 0x16,
+        name: "reserved_16",
+        factory: 0x00,
+    },
+    ProfileField {
+        offset: 0x18,
+        name: "reserved_18",
+        factory: 0x99,
+    },
+    ProfileField {
+        offset: 0x1F,
+        name: "reserved_1F",
+        factory: 0x0A,
+    },
+    ProfileField {
+        offset: 0x31,
+        name: "volume_level",
+        factory: 0x64,
+    },
+    ProfileField {
+        offset: 0x33,
+        name: "led_effect_mode",
+        factory: 0x01,
+    },
+    ProfileField {
+        offset: 0x35,
+        name: "reserved_35",
+        factory: 0x01,
+    },
+    ProfileField {
+        offset: 0x36,
+        name: "reserved_36",
+        factory: 0x01,
+    },
+    ProfileField {
+        offset: 0x37,
+        name: "reserved_37",
+        factory: 0x00,
+    },
 ];
 
 /// Offset of the lighting effect index inside the profile.
@@ -127,7 +167,12 @@ pub fn sub_offset(cmd: u8) -> Option<usize> {
 
 /// Build a record with the sub-dispatch handled for you.
 pub fn record_with_sub(cmd: u8, data: &[u8], at: usize, sub: Option<u8>) -> Vec<u8> {
-    build_record(cmd, data, at, sub.map(|v| (v, sub_offset(cmd).unwrap_or(1))))
+    build_record(
+        cmd,
+        data,
+        at,
+        sub.map(|v| (v, sub_offset(cmd).unwrap_or(1))),
+    )
 }
 
 /// Extract the factory profile from a flash dump.
@@ -184,10 +229,7 @@ impl Profile {
 
     /// All known fields with their current values.
     pub fn fields(&self) -> Vec<(ProfileField, u8)> {
-        PROFILE_FIELDS
-            .iter()
-            .map(|f| (*f, self.field(f)))
-            .collect()
+        PROFILE_FIELDS.iter().map(|f| (*f, self.field(f))).collect()
     }
 
     /// Set the lighting effect index and/or mode.
@@ -295,15 +337,51 @@ pub struct ClockRoute {
 
 /// The routes we try when setting the clock, in the order we try them.
 pub const CLOCK_ROUTES: &[ClockRoute] = &[
-    ClockRoute { record: 0x04, at: DATA_OFF, sub: None },
-    ClockRoute { record: 0x04, at: 0, sub: None },
-    ClockRoute { record: 0x05, at: DATA_OFF, sub: Some(0) },
-    ClockRoute { record: 0x05, at: DATA_OFF, sub: Some(1) },
-    ClockRoute { record: 0x05, at: DATA_OFF, sub: Some(2) },
-    ClockRoute { record: 0x03, at: DATA_OFF, sub: Some(1) },
-    ClockRoute { record: 0x03, at: DATA_OFF, sub: Some(2) },
-    ClockRoute { record: 0x03, at: DATA_OFF, sub: Some(3) },
-    ClockRoute { record: 0x03, at: DATA_OFF, sub: Some(4) },
+    ClockRoute {
+        record: 0x04,
+        at: DATA_OFF,
+        sub: None,
+    },
+    ClockRoute {
+        record: 0x04,
+        at: 0,
+        sub: None,
+    },
+    ClockRoute {
+        record: 0x05,
+        at: DATA_OFF,
+        sub: Some(0),
+    },
+    ClockRoute {
+        record: 0x05,
+        at: DATA_OFF,
+        sub: Some(1),
+    },
+    ClockRoute {
+        record: 0x05,
+        at: DATA_OFF,
+        sub: Some(2),
+    },
+    ClockRoute {
+        record: 0x03,
+        at: DATA_OFF,
+        sub: Some(1),
+    },
+    ClockRoute {
+        record: 0x03,
+        at: DATA_OFF,
+        sub: Some(2),
+    },
+    ClockRoute {
+        record: 0x03,
+        at: DATA_OFF,
+        sub: Some(3),
+    },
+    ClockRoute {
+        record: 0x03,
+        at: DATA_OFF,
+        sub: Some(4),
+    },
 ];
 
 /// The timing the module needs for a screen transfer.  Without these delays
@@ -390,9 +468,6 @@ mod tests {
     #[test]
     fn clock_payload_layout() {
         let p = ClockPayload::new(2026, 10, 21, 9, 7, 3, 2);
-        assert_eq!(
-            p.to_bytes(),
-            [0, 0, 0, 26, 20, 10, 21, 9, 7, 3, 2]
-        );
+        assert_eq!(p.to_bytes(), [0, 0, 0, 26, 20, 10, 21, 9, 7, 3, 2]);
     }
 }

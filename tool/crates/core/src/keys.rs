@@ -113,7 +113,13 @@ pub const COMBOS: &[Combo] = &[
 
 /// The media keys on the base layer (they work over every link mode).
 pub const MEDIA_KEYS: &[&str] = &[
-    "媒体播放/暂停", "上一曲", "下一曲", "静音", "音量减", "音量加", "计算器",
+    "媒体播放/暂停",
+    "上一曲",
+    "下一曲",
+    "静音",
+    "音量减",
+    "音量加",
+    "计算器",
 ];
 
 #[cfg(test)]
@@ -126,7 +132,10 @@ mod tests {
         assert!(LINK_MODES.iter().any(|m| m.state == 0x01));
         assert!(LINK_MODES.iter().any(|m| m.state == 0x25));
         assert_eq!(
-            LINK_MODES.iter().filter(|m| (0x35..=0x55).contains(&m.state)).count(),
+            LINK_MODES
+                .iter()
+                .filter(|m| (0x35..=0x55).contains(&m.state))
+                .count(),
             3
         );
     }
@@ -135,7 +144,11 @@ mod tests {
     fn combos_are_unique() {
         let mut seen = std::collections::HashSet::new();
         for c in COMBOS {
-            assert!(seen.insert(c.keys.join("+")), "duplicate combo {:?}", c.keys);
+            assert!(
+                seen.insert(c.keys.join("+")),
+                "duplicate combo {:?}",
+                c.keys
+            );
         }
     }
 }

@@ -17,9 +17,8 @@ pub use hid::{Collection, DeviceInfo};
 pub use protocol::{
     build_record, record, record_with_sub, sub_offset, ClockPayload, ClockRoute, Profile,
     ProfileField, ScreenTiming, CLOCK_ROUTES, DATA_OFF, FACTORY_PROFILE_OFF, LED_EFFECT_INDEX,
-    LED_EFFECT_MODE, LIVE_PROFILE_OFF, PAYLOAD, PID, PROFILE_FIELDS, PROFILE_LEN,
-    PROFILE_MARKER, REPORT, SCREEN_BLOCK, SCREEN_H, SCREEN_W, USAGE, USAGE_PAGE, VID,
-    VOLUME_LEVEL,
+    LED_EFFECT_MODE, LIVE_PROFILE_OFF, PAYLOAD, PID, PROFILE_FIELDS, PROFILE_LEN, PROFILE_MARKER,
+    REPORT, SCREEN_BLOCK, SCREEN_H, SCREEN_W, USAGE, USAGE_PAGE, VID, VOLUME_LEVEL,
 };
 
 use std::time::Duration;
@@ -87,7 +86,10 @@ impl Keyboard {
             let payload = clock_payload_for(when);
             let rec = record_with_sub(route.record, &payload, route.at, route.sub);
             self.send_record(&rec)?;
-            let frame = self.vendor.read_input(Duration::from_millis(800)).unwrap_or_default();
+            let frame = self
+                .vendor
+                .read_input(Duration::from_millis(800))
+                .unwrap_or_default();
             out.push(ClockAttempt {
                 route: *route,
                 time: format!("{:02}:{:02}", when.hour(), when.minute()),
@@ -124,11 +126,11 @@ pub fn clock_payload_for(when: OffsetDateTime) -> [u8; 11] {
     };
     ClockPayload::new(
         when.year() as u16,
-        when.month() as u8,
+        u8::from(when.month()),
         when.day(),
-        when.hour() as u8,
-        when.minute() as u8,
-        when.second() as u8,
+        when.hour(),
+        when.minute(),
+        when.second(),
         weekday,
     )
     .to_bytes()

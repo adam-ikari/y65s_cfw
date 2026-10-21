@@ -40,11 +40,10 @@ impl Patch {
         if !self.applies_to(image) {
             let start = self.address as usize;
             let end = (start + self.expect.len()).min(image.len());
+            let actual: &[u8] = &image[start..end];
             return Err(Y65sError::BadInput(format!(
                 "补丁 {} 不匹配：0x{start:04X} 处是 {:02X?}，期望 {:02X?}",
-                self.id,
-                &image[start..end],
-                &self.expect,
+                self.id, actual, self.expect,
             )));
         }
         let mut out = image.to_vec();
@@ -228,8 +227,7 @@ mod tests {
     /// against, otherwise we would be patching the wrong bytes.
     #[test]
     fn shipped_patches_match_the_dumps() {
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../firmware");
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../firmware");
         let mut checked = 0;
         for dump in ["YD-Y65S_full.bin", "backups/YD-Y65S_full_20261019.bin"] {
             let path = repo.join(dump);
@@ -237,11 +235,7 @@ mod tests {
                 continue;
             };
             for p in PATCHES {
-                assert!(
-                    p.applies_to(&image),
-                    "补丁 {} 对不上 {dump}",
-                    p.id
-                );
+                assert!(p.applies_to(&image), "补丁 {} 对不上 {dump}", p.id);
                 checked += 1;
             }
         }
@@ -253,7 +247,9 @@ mod tests {
     fn shipped_patch_rewrites_only_the_volume_field() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../firmware/YD-Y65S_full.bin");
-        let Ok(image) = std::fs::read(&path) else { return };
+        let Ok(image) = std::fs::read(&path) else {
+            return;
+        };
         let p = &PATCHES[0];
         let out = p.apply(&image).unwrap();
         assert_ne!(out, image);
@@ -279,7 +275,9 @@ mod tests {
     fn conflicting_variants_cannot_both_be_applied() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../firmware/YD-Y65S_full.bin");
-        let Ok(image) = std::fs::read(&path) else { return };
+        let Ok(image) = std::fs::read(&path) else {
+            return;
+        };
         let picked = select(&["no-volume-send".into(), "no-volume-send-zero".into()]).unwrap();
         assert!(apply_all(&image, &picked).is_err());
     }
@@ -298,7 +296,9 @@ mod tests {
     fn knob_patch_keeps_the_host_usage_and_drops_the_module_notify() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../firmware/YD-Y65S_full.bin");
-        let Ok(image) = std::fs::read(&path) else { return };
+        let Ok(image) = std::fs::read(&path) else {
+            return;
+        };
         let picked = select(&["no-volume-ods".into()]).unwrap();
         let out = picked[0].apply(&image).unwrap();
         let base = picked[0].address as usize;
@@ -333,7 +333,9 @@ mod tests {
     fn knob_patch_touches_nothing_outside_its_range() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../firmware/YD-Y65S_full.bin");
-        let Ok(image) = std::fs::read(&path) else { return };
+        let Ok(image) = std::fs::read(&path) else {
+            return;
+        };
         let picked = select(&["no-volume-ods".into()]).unwrap();
         let p = picked[0];
         let out = p.apply(&image).unwrap();
@@ -344,6 +346,6 @@ mod tests {
                 assert_eq!(out[i], image[i], "补丁越界改了 0x{i:04X}");
             }
         }
-        assert_eq!(&out[start..end], &p.replace[..]);
+        assert_eq!(out[start..end], p.replace[..]);
     }
 }

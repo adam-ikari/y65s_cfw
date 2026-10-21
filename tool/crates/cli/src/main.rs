@@ -55,9 +55,7 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
         }
-        other => Err(Y65sError::BadInput(format!(
-            "未知命令：{other}\n\n{USAGE}"
-        ))),
+        other => Err(Y65sError::BadInput(format!("未知命令：{other}\n\n{USAGE}"))),
     };
 
     match result {
@@ -89,9 +87,9 @@ fn parse_opts(args: &[String]) -> Result<Opts, Y65sError> {
     while i < args.len() {
         match args[i].as_str() {
             "--backup" => {
-                let value = args.get(i + 1).ok_or_else(|| {
-                    Y65sError::BadInput("--backup 后面要跟一个路径".into())
-                })?;
+                let value = args
+                    .get(i + 1)
+                    .ok_or_else(|| Y65sError::BadInput("--backup 后面要跟一个路径".into()))?;
                 opts.backup = Some(PathBuf::from(value));
                 i += 2;
             }
@@ -123,17 +121,21 @@ fn cmd_fix_volume(args: &[String]) -> Result<(), Y65sError> {
     if report.already_fixed {
         println!("这台键盘的固件里已经有修复了，没有写入任何东西。");
     } else {
-        println!(
-            "已应用补丁：{}",
-            report.applied.join(" + ")
-        );
+        println!("已应用补丁：{}", report.applied.join(" + "));
     }
     println!("备份：{}", report.backup.as_deref().unwrap_or("(未保存)"));
     println!("备份 md5：{}", report.backup_md5);
     if !report.already_fixed {
         println!("写入后 md5：{}", report.image_md5);
     }
-    println!("校验：{}", if report.verified { "通过 ✓" } else { "未通过 ✗" });
+    println!(
+        "校验：{}",
+        if report.verified {
+            "通过 ✓"
+        } else {
+            "未通过 ✗"
+        }
+    );
     Ok(())
 }
 
@@ -181,16 +183,14 @@ fn cmd_flash(args: &[String]) -> Result<(), Y65sError> {
 
 fn cmd_patch(args: &[String]) -> Result<(), Y65sError> {
     let opts = parse_opts(args)?;
-    let dump = opts
-        .positional
-        .first()
-        .map(PathBuf::from)
-        .ok_or_else(|| Y65sError::BadInput("用法：y65s patch <dump> <输出> [--id ID]".into()))?;
-    let out = opts
-        .positional
-        .get(1)
-        .map(PathBuf::from)
-        .ok_or_else(|| Y65sError::BadInput("用法：y65s patch <dump> <输出> [--id ID]".into()))?;
+    let dump =
+        opts.positional.first().map(PathBuf::from).ok_or_else(|| {
+            Y65sError::BadInput("用法：y65s patch <dump> <输出> [--id ID]".into())
+        })?;
+    let out =
+        opts.positional.get(1).map(PathBuf::from).ok_or_else(|| {
+            Y65sError::BadInput("用法：y65s patch <dump> <输出> [--id ID]".into())
+        })?;
     let ids = if opts.ids.is_empty() {
         flash::VOLUME_FIX.iter().map(|s| s.to_string()).collect()
     } else {

@@ -16,7 +16,7 @@ use std::time::Duration;
 use hidapi::{HidApi, HidDevice};
 
 use crate::error::{Result, Y65sError};
-use crate::protocol::{USAGE, USAGE_PAGE, VID, PID};
+use crate::protocol::{PID, USAGE, USAGE_PAGE, VID};
 
 /// A HID collection of the keyboard.
 pub struct Collection {
@@ -88,8 +88,12 @@ impl Collection {
         let (tx, rx) = mpsc::channel();
         let path = self.path.clone();
         thread::spawn(move || {
-            let Ok(api) = hidapi::HidApi::new() else { return };
-            let Ok(device) = api.open_path(&path) else { return };
+            let Ok(api) = hidapi::HidApi::new() else {
+                return;
+            };
+            let Ok(device) = api.open_path(&path) else {
+                return;
+            };
             let mut buf = [0u8; 64];
             if let Ok(n) = device.read(&mut buf) {
                 let _ = tx.send(buf[..n].to_vec());

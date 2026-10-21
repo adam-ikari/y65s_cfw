@@ -185,7 +185,9 @@ impl Isp {
     /// Read `len` bytes starting at `addr` (address must be page aligned).
     pub fn read(&self, addr: usize, len: usize) -> Result<Vec<u8>> {
         if addr % PAGE_SIZE != 0 {
-            return Err(Y65sError::BadInput("read address must be page aligned".into()));
+            return Err(Y65sError::BadInput(
+                "read address must be page aligned".into(),
+            ));
         }
         self.command_best_effort(CMD_ENABLE_FIRMWARE, 0, 0);
         std::thread::sleep(Duration::from_millis(200));
@@ -343,10 +345,7 @@ mod tests {
         assert!(enable > last_page, "enable 必须排在所有写页之后");
         assert_eq!(plan[0], Step::Erase);
         assert_eq!(*plan.last().unwrap(), Step::Reboot);
-        assert_eq!(
-            plan.iter().filter(|s| **s == Step::WritePage).count(),
-            30
-        );
+        assert_eq!(plan.iter().filter(|s| **s == Step::WritePage).count(), 30);
     }
 
     /// The payload keeps the reset vector twice, exactly like the vendor
@@ -371,7 +370,7 @@ mod tests {
     /// check has to skip them -- but nothing else.
     #[test]
     fn verification_skips_only_the_bootloader_window() {
-        let mut image = vec![0u8; FIRMWARE_SIZE];
+        let image = vec![0u8; FIRMWARE_SIZE];
         let mut readback = image.clone();
         readback[VECTOR_MARKER] = 0x02;
         readback[VECTOR_COPY] = 0x89;
