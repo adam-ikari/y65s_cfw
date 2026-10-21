@@ -1,6 +1,6 @@
 # Brain Index
 
-_Auto-generated. Last updated 2026-10-21T03:23:28.809Z._
+_Auto-generated. Last updated 2026-10-21T03:28:59.005Z._
 
 - [brain-maintenance](pages/brain-maintenance.md) — category: reference | tags: [brain, tooling, git, crlf] | ## 症状
 - [custom-firmware-path](pages/custom-firmware-path.md) — category: decision | ## 结论
@@ -14,3 +14,4 @@ _Auto-generated. Last updated 2026-10-21T03:23:28.809Z._
 - [rea-firmware-lane](pages/rea-firmware-lane.md) — category: reference | tags: [rea, firmware, tooling] | ## 安装与配置
 - [screen-customization](pages/screen-customization.md) — category: project | tags: [screen, uart, module, goal] | 用户的目标是**自定义 Y65S 小屏幕的显示内容**（不只是键盘固件 / 按键重映射）。
 - [smk-port](pages/smk-port.md) — category: reference | tags: [smk, port, build, sdcc] | ## 结论
+- [two-chip-architecture](pages/two-chip-architecture.md) — category: reference | tags: [architecture, module, sh68f90] | ## 结论

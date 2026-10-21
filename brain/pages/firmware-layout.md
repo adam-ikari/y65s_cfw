@@ -4,7 +4,7 @@ title: "固件布局 (Firmware Layout)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-19T22:56:13"
+updated: "2026-10-21T03:28:59"
 ---
 
 
@@ -98,9 +98,17 @@ bootloader 的 MD5 与社区已知的 `3e0ebd0c` 完全一致，说明平台判�
   但帧格式不同：SMK 用 `0xAA` 魔数，本机是 `0x5A` 魔数 + `01 11 xx` 帧头。故 SMK 的 BK3632
   驱动不能直接套用，需要按本机协议改写。
 
-**结论（后两条为推断）**：YD-Y65S = 主控 SH68F90A + 第二颗 SoC（无线 + 彩色小屏 + 旋钮），两者只靠这条
-UART 交换短报文（连接状态、HID 报告、灯效、模式切换）。因此 **屏幕不是 8051 驱动的**；自制固件若不说
-这条私有串口协议，屏幕不会有主机侧内容、旋钮与 2.4G/BT 也不能用。
+**结论（2026-10-21 更新：前半已确认，后半仍为推断）**：YD-Y65S = 主控 SH68F90A + 第二颗 SoC
+（无线 + 彩色小屏 + 旋钮），两者只靠这条 UART 交换短报文（连接状态、HID 报告、灯效、模式切换）。
+
+* [已确认] 主控**不可能**自己画屏：全片 SFR/XSFR 访问枚举（`analysis/fwdis.py sfr`）里没有任何显示控制器、
+  SPI、I²C，也没有编码器/ADC 与射频前端 ⇒ 屏、旋钮、无线只能在第二颗 SoC 那边。
+* [已确认] 主控**会**替模块转发主机命令（feature 9 → 记录 → 模块 cmd），也会把模块的状态回报
+  （`0x5A` 私有短报文：类型 `0x00` → 事件码 `xdata[0x0F18]`，类型 `0x02` → `xdata[0x1155]`）转成主机看得懂的东西。
+* [推断] 旋钮/2.4G/BT 确实由第二颗 SoC 执行（无其它可能，但未见直接证据）。
+
+⇒ 自制固件若不说这条私有串口协议，屏幕不会有主机侧内容，旋钮与 2.4G/BT 也不能用。
+分工与数据流的完整取证见 [[two-chip-architecture]] 与 `docs/two-chip-architecture.md`。
 
 ## 熵与空区
 
@@ -157,4 +165,10 @@ Python 版（`analysis/mcs51.py`）已修正。
   kind: reversal
   summary: "早先『xdata 0x1130 = 模块 RX 帧 / 0x11C1 = 模块 TX 缓冲』的解读作废: get_feature(9) 返回的 519 B 描述符暂存内容说明 0x1100 起是主机厂商命令/EP0 暂存区, 0x1130/0x11C1 落在其中, 需按主机通道重解"
   source: "tools/vendorhid.py get --report 9 实测"
+  affects: [firmware-layout]
+
+- time: 2026-10-21T03:28:59
+  kind: decision
+  summary: "主控无显示/旋钮/射频外设已由全片 SFR/XSFR 枚举确认；双芯分工指向 [[two-chip-architecture]]"
+  source: "2026-10-21 两芯片分析报告"
   affects: [firmware-layout]
