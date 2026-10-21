@@ -5,7 +5,7 @@ category: reference
 status: active
 tags: [matrix, keymap, sh68f90, yd-y65s]
 created: "2026-10-19T17:49:43"
-updated: "2026-10-19T20:47:51"
+updated: "2026-10-21T06:27:37"
 ---
 
 <!-- compiled_truth -->
@@ -295,3 +295,15 @@ uv run analysis/fwdis.py dis firmware/YD-Y65S_firmware.bin --start 0 --len 0xF00
   kind: reversal
   summary: "反转两条旧结论：① class 0x08 其余 7 条记录不是 no-op，而是 LED 控制指令（真语义在副派发 0x55CF，主派发 0xB90D 只看 0xFF）；② 早期"
   affects: [matrix-and-keymap]
+
+- time: 2026-10-21T06:24:22
+  kind: evidence
+  summary: "2026-10-21 刷机事故排查结论：键盘 flash 的『键行为』与刷机前逐字节等价，刷机不是，键失灵的原因。依据三条：① 8051 对在用 profile(0xA400) 只读 14 个偏移(0x03/0x0A/0x16/0x18/0x1F/0x31/0x33/0x35/0x36/0x37/0x7E/0x7F)，整块 profile 与 0xA800-0xA95F 都不读；② 键位表在 flash 0xBC00(4 层)，「，」用 usage 0x36 位于 col9×row3(P5.1×P5.3)，记录 00 00 00 36 = 启用(不是 0x0D 禁用)；③ 刷机前后 0x0000-0xA448 代码区逐字节相同，唯一固件可见的配置字节 flash[0xA403](profile 偏移 0x03，经 0xD021 变成 xdata[0x0C2A]=值+2，是键记录表 0x04F5/0x0473(21B 一项)的索引)。刷机把该字节从 0x01 还原成出厂的 0x00(键表切回另一套)，已按 0x01 刷回仍然无效 ⇒ 该键在刷机前就已经是不灵的，或与固件无关(硬件/键帽/主机端)。同次刷机顺带验证旋钮仍然好用(主机音量 50%→48%)。"
+  source: "2026-10-21 真机刷机前后 64KiB 逐字节比对 + build/fw_full.lst 复核 0xD021/0x748F/0x04F5"
+  affects: [matrix-and-keymap, isp-protocol, no-write-policy]
+
+- time: 2026-10-21T06:27:37
+  kind: evidence
+  summary: "2026-10-21 补正上一条：唯一还差的固件可见字节是 flash[0xA418]（profile 偏移 0x18），不是 0xA417（那个固件根本不读）。0xA418 经 0x78B2/0x7CF8 进入 xdata[0x0F2B]，0x1F83 处非零才走 0x1F8D 的分支并把该值经 0x2C18（24 位乘法器）参与表索引计算 ⇒ 数值不同会算出不同的表项。刷机前本机是 0x02，出厂 dump 是 0x0A。键位区 0xBC00-0xCBFF 刷机前后只差 5 字节：0xBDFE/0xBDFF 与 0xC5FE/0xC5FF 是 0x5AA5 标记（固件不读，落在层块尾部填充区），0xC4EC 是 layer2 col9 row4 的 0x0D↔0x00（两者都是空/禁用，无功能差别）。最终镜像 = 出厂代码区(0x0000-0xA3FF 与出厂 dump 逐字节相同) + 本机自己的配置区 + 补丁 no-volume-send(0x5557) + no-volume-ods(0x059C)，MD5 48cc703280ae668539cba81a30c1ae7e，读回校验一致。"
+  source: "2026-10-21 真机三轮刷机 + 逐字节比对 + 0x2C18/0x1F83 复核"
+  affects: [matrix-and-keymap, isp-protocol, custom-firmware-path]
