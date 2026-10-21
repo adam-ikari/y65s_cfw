@@ -88,5 +88,9 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           cp firmware/YD-Y65S_factory_volume_fixed.bin dist/
-          gh release upload "$TAG" dist/y65s.exe dist/YD-Y65S_factory_volume_fixed.bin \
+          cp tool/cli/fix-volume.bat dist/
+          gh release upload "$TAG" \
+            dist/y65s.exe \
+            dist/fix-volume.bat \
+            dist/YD-Y65S_factory_volume_fixed.bin \
             --repo "$GITHUB_REPOSITORY" --clobber

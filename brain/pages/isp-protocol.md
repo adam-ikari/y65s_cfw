@@ -4,7 +4,7 @@ title: "ISP 协议 (ISP Protocol)"
 category: reference
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-21T05:38:17"
+updated: "2026-10-21T08:02:49"
 ---
 
 <!-- compiled_truth -->
@@ -111,3 +111,9 @@ ISP 读回的 payload 中 `0x0001-0x0002` 实际来自 `flash[0xEFFC-0xEFFD]`（
   summary: "2026-10-21 真机事故与恢复：自写 tools/isp_flash.py 刷回出厂固件时按 0x55(enable)→0x45(erase)→0x57/0x77(write)→0x5a(reboot) 的错误顺序执行，erase 清掉 flash[0x0000] 的 LJMP 与 flash[0xEFFB] 标记，写页又不重建 0x0000（bootloader 只把 payload[1..2] 搬到 flash[0xEFFC]），键盘随即开不了机：设备反复枚举为 0603:1020，258a:019d 不出现。恢复办法：按 sinowisp 的顺序重刷（erase→write→read-back 校验→0x55 enable→reboot），payload 写前把 [1..3] 拷到 [0xEFFC..0xEFFE]，读回 MD5 c94234578ba69c566576b6e2569dbb34 与出厂 dump 逐字节一致，键盘回到 258a:019d 并能应答 feature report 9。"
   source: "omp-host 真机 2026-10-21"
   affects: [isp-protocol, no-write-policy, custom-firmware-path]
+
+- time: 2026-10-21T08:02:49
+  kind: evidence
+  summary: "2026-10-21 ISP 写入顺序的定论（工具实测 + 厂商工具一致）：写固件必须是 erase(0x45) → init write(0x57) → 逐页 0x77 → enable(0x55) → reboot(0x5a)，enable 必须排在所有写页之后 —— bootloader 用它存在 0xEFFC 的复位向量重建 0x0000 的跳转指令并置 0xEFFB=0x02 标记；顺序反了（enable 先发）键盘就开不了机，这正是 2026-10-21 刷机事故的根因，也是 Rust 版 isp.rs 之前的写法（enable 在 erase/write 之前）。另两条细节：① 载荷要把复位向量镜像一份到 0xEFFC（payload[1..3]，厂商 sinowisp 与我们的 Python 版都这么做，设备最终会在那里写自己的版本，读回时那 4 字节不算我们的）；② 读回校验要比对整片应用区，但跳过 bootloader 自己管的 0xEFFB..0xEFFF。代码里顺序集中在 y65s-core 的 isp::write_plan()，有单测盯着 enable 必须晚于最后一个写页。"
+  source: "2026-10-21 tools/isp_flash.py 真机三次刷机 + 厂商 sinowisp 源码对照 + Rust 单测"
+  affects: [isp-protocol, no-write-policy, matrix-and-keymap]

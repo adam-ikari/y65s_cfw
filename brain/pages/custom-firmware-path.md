@@ -4,7 +4,7 @@ title: "自制固件路线 (Custom Firmware Path)"
 category: decision
 status: active
 created: "2026-10-19T16:46:15"
-updated: "2026-10-21T03:23:28"
+updated: "2026-10-21T08:02:49"
 ---
 
 
@@ -144,3 +144,9 @@ CIY X77（SH68F89）。**本机的 `258A:019D` 已在 `sinowisp` 的设备表中
   summary: "2026-10-21 用户决定：工具可以做开机自启动 + 常驻后台 ⇒ 校时按『常驻持续同步』做（模块 RTC 会漂 ~1.5%，一次性对时几天后又不准，常驻定时重发才能真正修好）；同理，工具在跑的时候可以持续把系统音量推给键盘，屏幕上���音量就与系统一致 ⇒ 音量显示分两层修：工具在跑=持续推送正确值；工具不在跑=固件补丁 no-volume-send 让 8051 不发音量（屏幕上不出现不准的值）。Tauri v2 侧对应能力：tauri-plugin-autostart（Win 注册表 Run / Linux XDG autostart / macOS LaunchAgent）+ 托盘常驻（无窗口或最小化到托盘）。"
   source: "2026-10-21 用户决定"
   affects: [custom-firmware-path, no-write-policy, screen-customization]
+
+- time: 2026-10-21T08:02:49
+  kind: decision
+  summary: "2026-10-21 面向使用者的发布线已落地：仓库 adam-ikari/y65s_cfw 转公开，GitHub Pages 站点 https://adam-ikari.github.io/y65s_cfw/（docs/ 目录，.nojekyll 直出）；tag v0.1.0 触发 .github/workflows/release.yml，产出同一个 Release 里的四样东西：Tauri 桌面应用安装包（Windows）、命令行版 y65s.exe、一键入口 fix-volume.bat、出厂固件+音量条修复镜像 YD-Y65S_factory_volume_fixed.bin（= 出厂 dump + 两条补丁，恰好差 22 字节，md5 4322b1c5b5d18ecd3644241637b1630f）。对外的修复走「读出用户自己的 flash → 备份 → 打补丁 → 写回 → 读回校验」，不重置用户 profile。厂商 app 的可执行文件不进版本库（只留本地分析），公开前已用 filter-branch 从历史里清除。"
+  source: "2026-10-21 发布执行"
+  affects: [custom-firmware-path, no-write-policy, isp-protocol]

@@ -164,6 +164,19 @@ impl Isp {
         self.cmd.send_feature(&packet)
     }
 
+    /// Send a command without caring whether the call reported an error.
+    ///
+    /// The board leaves the bus while the command is in flight, so
+    /// `SetFeature` usually comes back with an error (0x1f) even though the
+    /// command was accepted and the jump/reboot happened.  That failure is
+    /// the *expected* sign of success, so the command channel is best effort;
+    /// a real failure shows up on the transfer channel, where the pages are
+    /// written and read back.
+    fn command_best_effort(&self, cmd: u8, arg0: u8, arg1: u8) {
+        let packet = [REPORT_ID_CMD, cmd, arg0, arg1, 0x00, 0x00];
+        let _ = self.cmd.send_feature(&packet);
+    }
+
     /// Enable access to the firmware area.
     pub fn enable_firmware(&self) -> Result<()> {
         self.command(CMD_ENABLE_FIRMWARE, 0, 0)
@@ -174,9 +187,9 @@ impl Isp {
         if addr % PAGE_SIZE != 0 {
             return Err(Y65sError::BadInput("read address must be page aligned".into()));
         }
-        self.enable_firmware()?;
+        self.command_best_effort(CMD_ENABLE_FIRMWARE, 0, 0);
         std::thread::sleep(Duration::from_millis(200));
-        self.command(CMD_INIT_READ, (addr & 0xff) as u8, (addr >> 8) as u8)?;
+        self.command_best_effort(CMD_INIT_READ, (addr & 0xff) as u8, (addr >> 8) as u8);
         std::thread::sleep(Duration::from_millis(200));
         let mut out = Vec::with_capacity(len);
         while out.len() < len {
