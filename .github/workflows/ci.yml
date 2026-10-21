@@ -15,6 +15,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: 系统依赖（hidapi 在 Linux 上要 libudev）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       - name: 格式检查
         run: cargo fmt --all --check --manifest-path tool/Cargo.toml
       - name: Clippy
