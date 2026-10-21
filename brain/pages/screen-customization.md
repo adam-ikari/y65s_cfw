@@ -5,7 +5,7 @@ category: project
 status: active
 tags: [screen, uart, module, goal]
 created: "2026-10-19T22:31:11"
-updated: "2026-10-20T16:59:49"
+updated: "2026-10-21T01:20:29"
 ---
 
 <!-- compiled_truth -->
@@ -216,3 +216,9 @@ updated: "2026-10-20T16:59:49"
   summary: "2026-10-20 拿到模块 BLE 完整 GATT 画像(WinRT 直连, bleak 连不上已连接设备)：设备名 YD-Y65S-5.0，地址 FF:26:00:0F:0A:56，BLE VID/PID 0204:B35A，厂商 Sinowealth ltd.。服务/特征：0x1800(0x2A00 名字/0x2A01 appearance=0x03C1/0x2A04 连接参数)、0x1812 HID(被 Windows 组策略独占)、0x180F(0x2A19 电量=100)、0x180A(0x2A29 厂商名/0x2A24 模型=1.0.0/0x2A25 序列/0x2A27,0x2A26,0x2A28 版本/0x2A50 IEEE)、0xF200 厂商服务只有 0xF202(9 B，只写或通知，回读恒 0) ⇒ 手机写时间就是写 0xF202。已用四种布局各写一次做扫描：odm-bcd(5A 01 5A + BCD yy mm dd hh mi ss)、odm-dec(同前但十进制)、bcd(BCD 7 字段 + 00 00)、epoch(4 B LE + 5 个 0)，对应屏幕时间 00:59/01:00/01:01/01:02，由屏幕读数反推格式。工具：tools/cts_sync.py(--read/--write/--sweep/--all)。"
   source: "omp-host 真机 WinRT 2026-10-20"
   affects: [screen-customization, module-link]
+
+- time: 2026-10-21T01:20:29
+  kind: evidence
+  summary: "2026-10-21 官方工具线索：仓库 offical_tools/ 里的『K65 Keyboard Setup v2.0 20241026』(innoextract 可解) 与 Y95 版是同族 app，KB.ini 同为 VID=258a PID=019d ⇒ 能直接驱动本机。K65 版与 Y95 版的差别正是对时：K65 的 KB.ini 里 SendTimeOnOpenKB=1(启用)、SendSysParam=1000、SyncMask=3，Y95 版则是注释掉的死配置。反汇编 K65 的 OemDrv.exe 得到：(1) 设备类是 CDev3632(即 BK3632)；(2) 命令走 CDev3632::AccessData(cmd,nBytesToWrite,package index) 分包发送并带 crc，日志串有 'AccessData: package index err, cmd=0x%x, send=0x%x, in=0x%x'、'CDev3632::SendCMD: timeout, cmd=0x%x, nPackages=%d'、'CDevG5KB::AccessData_Page'、'SetGIFParam'；(3) 存在一个 1 秒循环：取本机 GetLocalTime → 若与上次不同 → 调 0x468c00 发送，载荷为 [date[0]][time[0]][x][yy_lo][yy_hi][mo][dd][hh][mi][ss][wd] 共 11 字节(长度参数 14)，随后 Sleep(SendSysParam=1000)；SyncMask 的 bit0x02/bit0x04 分别控制日期/时间。⇒ 厂商校时走的是这条每秒循环，理论上只要让官方 app 打开键盘即可自动对时(不用逆出包格式)。"
+  source: "K65 Keyboard Setup 反汇编 2026-10-21 (innoextract + objdump)"
+  affects: [screen-customization, module-link, driveall-protocol]
