@@ -32,3 +32,8 @@ tool/webui/dist/
 
 # 厂商 app 的可执行文件：只留在本地，不进版本库（不进公开仓库）
 offical_tools/
+
+# vitepress 构建产物
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/node_modules/

@@ -1,0 +1,75 @@
+:root {
+  --vp-c-brand-1: #4a9fe0;
+  --vp-c-brand-2: #3b86c4;
+  --vp-c-brand-3: #2f6ea5;
+  --vp-c-brand-soft: rgba(74, 159, 224, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #7cc4ff 30%, #6ee7a8);
+}
+
+.vp-doc h2 {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 24px;
+  margin-top: 40px;
+}
+
+.vp-doc h2:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+table {
+  display: table;
+  width: 100%;
+}
+
+table code {
+  white-space: nowrap;
+}
+
+/* 首页的下载按钮 */
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.downloads a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+
+.downloads a:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+.downloads a.primary {
+  background: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+  color: #fff;
+}
+
+.downloads a.primary:hover {
+  background: var(--vp-c-brand-2);
+}
+
+.note {
+  border-left: 3px solid var(--vp-c-warning-2, #ffcf7a);
+  padding: 10px 16px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 0 8px 8px 0;
+}
+
+.ok {
+  color: var(--vp-c-green-1, #6ee7a8);
+}
