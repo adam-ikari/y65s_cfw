@@ -16,9 +16,8 @@ export default defineConfig({
     nav: [
       { text: "首页", link: "/" },
       { text: "怎么修", link: "/how-to" },
-      { text: "补丁说明", link: "/patches" },
+      { text: "补丁", link: "/patches" },
       { text: "常见问题", link: "/faq" },
-      { text: "技术文档", link: "/two-chip-architecture" },
     ],
     sidebar: [
       {
